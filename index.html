@@ -6,72 +6,22 @@
   <title>Axiona CRM</title>
   <link rel="stylesheet" href="css/style.css" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='28'>⊞</text></svg>" />
-  <!-- Chart.js CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
+  <div id="root"></div>
 
-<!-- API Key Setup -->
-<div id="api-setup">
-  <div class="setup-box">
-    <h2 style="margin-bottom:8px;">✦ AI Asistent</h2>
-    <p>Pre AI funkcie potrebuješ Anthropic API kľúč.
-    Kľúč sa uloží len lokálne v tvojom prehliadači.</p>
-    <div style="margin-bottom:12px;">
-      <a href="https://console.anthropic.com/keys" target="_blank"
-         style="color:var(--acc);font-size:13px;">→ Získaj kľúč na console.anthropic.com</a>
-    </div>
-    <div class="form-row">
-      <label class="form-label">API kľúč</label>
-      <input id="api-key-input" type="password" placeholder="sk-ant-api03-..." />
-    </div>
-    <div style="display:flex;gap:8px;margin-top:12px;">
-      <button class="btn-primary" onclick="app.saveApiKey()">Uložiť a pokračovať</button>
-      <button class="btn-ghost" onclick="document.getElementById('api-setup').classList.remove('open')">Neskôr</button>
-    </div>
-    <p style="margin-top:16px;font-size:11px;color:var(--muted);">
-      AI používa model claude-haiku (najlacnejší). Pár centov mesačne pri bežnom používaní.
-    </p>
-  </div>
-</div>
-
-<!-- Modal -->
-<div class="overlay" id="modal-overlay">
-  <div class="modal" id="modal-box">
-    <div class="modal-head">
-      <h3 id="modal-title"></h3>
-      <button class="btn-ghost" style="padding:3px 10px;font-size:16px;" onclick="modal.close()">✕</button>
-    </div>
-    <div id="modal-body"></div>
-  </div>
-</div>
-
-<!-- App -->
-<div id="app">
-  <div id="sidebar">
-    <div id="sidebar-head">
-      <div class="brand">Axiona</div>
-      <div class="title">CRM</div>
-    </div>
-    <nav id="nav"></nav>
-    <div id="sidebar-foot">Načítavam...</div>
-    <div style="padding:10px 10px 16px;border-top:1px solid var(--brd);display:flex;flex-direction:column;gap:6px;">
-      <button class="btn-ghost" style="font-size:11px;padding:5px 8px;text-align:left;" onclick="app.exportData()">⬇ Export záloha</button>
-      <button class="btn-ghost" style="font-size:11px;padding:5px 8px;text-align:left;" onclick="app.importData()">⬆ Import záloha</button>
-      <button class="btn-ghost" style="font-size:11px;padding:5px 8px;text-align:left;" onclick="app.showApiSetup()">🔑 API kľúč</button>
-    </div>
-  </div>
-  <div id="content"></div>
-</div>
-
-<script src="js/db.js"></script>
-<script src="js/utils.js"></script>
-<script src="js/modal.js"></script>
-<script src="js/views/dashboard.js"></script>
-<script src="js/views/contacts.js"></script>
-<script src="js/views/pipeline.js"></script>
-<script src="js/views/commissions.js"></script>
-<script src="js/views/ai.js"></script>
-<script src="js/app.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/modal.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/views/dashboard.js"></script>
+  <script src="js/views/contacts.js"></script>
+  <script src="js/views/pipeline.js"></script>
+  <script src="js/views/commissions.js"></script>
+  <script src="js/views/ai.js"></script>
+  <script src="js/views/partners.js"></script>
+  <script src="js/app.js"></script>
 </body>
 </html>
