@@ -1,4 +1,4 @@
-// ── js/auth.js — prihlásenie / registrácia ───────────────────────────────────
+// ── js/auth.js ───────────────────────────────────────────────────────────────
 
 const auth = {
   user:    null,
@@ -12,7 +12,6 @@ const auth = {
       this.user    = session.user;
       this.profile = await db.getProfile();
     }
-    // Počúvaj zmeny auth stavu
     db.client.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN') {
         this.user    = session.user;
@@ -31,20 +30,32 @@ const auth = {
     if (error) throw error;
   },
 
-  async signup(email, password, name) {
-    const { error } = await db.client.auth.signUp({
+  async signup(email, password, name, refCode) {
+    const { data, error } = await db.client.auth.signUp({
       email, password,
       options: { data: { name } },
     });
     if (error) throw error;
+
+    // Ak bol zadaný referral kód, ulož väzbu
+    if (refCode && data.user) {
+      await db.setReferredBy(data.user.id, refCode);
+    }
   },
 
   async logout() {
     await db.client.auth.signOut();
   },
 
-  // Render login / registrácia
+  // Zisti ref kód z URL parametra ?ref=XXXXX
+  _getRefFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('ref') || '';
+  },
+
   renderLoginScreen() {
+    const refCode = this._getRefFromUrl();
+
     return `
       <div style="min-height:100vh;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:20px;">
         <div style="width:100%;max-width:400px;">
@@ -52,18 +63,19 @@ const auth = {
           <div style="text-align:center;margin-bottom:32px;">
             <div style="font-size:11px;color:var(--acc);font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">Axiona</div>
             <div style="font-size:28px;font-weight:700;margin-top:4px;">CRM</div>
+            ${refCode ? `<div style="margin-top:8px;font-size:12px;color:var(--green);background:rgba(62,207,142,0.1);border:1px solid rgba(62,207,142,0.2);border-radius:8px;padding:6px 12px;display:inline-block;">
+              🔗 Pozývací kód: <strong>${esc(refCode)}</strong>
+            </div>` : ''}
           </div>
 
           <!-- Tabs -->
           <div style="display:flex;background:var(--surf);border:1px solid var(--brd);border-radius:10px;padding:4px;margin-bottom:24px;">
             <button id="tab-login" onclick="auth.switchTab('login')"
-              style="flex:1;padding:8px;border:none;border-radius:7px;font-size:13px;font-weight:600;
-                     background:var(--card);color:var(--txt);cursor:pointer;">
+              style="flex:1;padding:8px;border:none;border-radius:7px;font-size:13px;font-weight:600;background:var(--card);color:var(--txt);cursor:pointer;">
               Prihlásiť sa
             </button>
             <button id="tab-signup" onclick="auth.switchTab('signup')"
-              style="flex:1;padding:8px;border:none;border-radius:7px;font-size:13px;font-weight:500;
-                     background:transparent;color:var(--muted);cursor:pointer;">
+              style="flex:1;padding:8px;border:none;border-radius:7px;font-size:13px;font-weight:500;background:transparent;color:var(--muted);cursor:pointer;">
               Registrácia
             </button>
           </div>
@@ -71,8 +83,10 @@ const auth = {
           <!-- Login form -->
           <div id="form-login" class="card" style="padding:24px;">
             <div class="form-row"><label class="form-label">Email</label><input id="auth-email" type="email" placeholder="tvoj@email.sk" /></div>
-            <div class="form-row"><label class="form-label">Heslo</label><input id="auth-password" type="password" placeholder="••••••••"
-              onkeydown="if(event.key==='Enter') auth.doLogin();" /></div>
+            <div class="form-row"><label class="form-label">Heslo</label>
+              <input id="auth-password" type="password" placeholder="••••••••"
+                onkeydown="if(event.key==='Enter') auth.doLogin();" />
+            </div>
             <div id="auth-error" style="display:none;color:var(--red);font-size:12px;margin-bottom:12px;padding:8px;background:rgba(242,85,85,0.1);border-radius:6px;"></div>
             <button class="btn-primary" style="width:100%;padding:11px;" onclick="auth.doLogin()" id="btn-login">
               Prihlásiť sa
@@ -81,10 +95,18 @@ const auth = {
 
           <!-- Signup form -->
           <div id="form-signup" class="card" style="padding:24px;display:none;">
-            <div class="form-row"><label class="form-label">Meno</label><input id="auth-name" type="text" placeholder="Ján Novák" /></div>
+            <div class="form-row"><label class="form-label">Meno a priezvisko</label><input id="auth-name" type="text" placeholder="Ján Novák" /></div>
             <div class="form-row"><label class="form-label">Email</label><input id="auth-email2" type="email" placeholder="tvoj@email.sk" /></div>
-            <div class="form-row"><label class="form-label">Heslo</label><input id="auth-password2" type="password" placeholder="min. 6 znakov"
-              onkeydown="if(event.key==='Enter') auth.doSignup();" /></div>
+            <div class="form-row"><label class="form-label">Heslo</label>
+              <input id="auth-password2" type="password" placeholder="min. 6 znakov"
+                onkeydown="if(event.key==='Enter') auth.doSignup();" />
+            </div>
+            <div class="form-row">
+              <label class="form-label">Pozývací kód <span style="color:var(--muted);font-weight:400;">(nepovinný)</span></label>
+              <input id="auth-refcode" type="text" placeholder="napr. A1B2C3D4"
+                value="${esc(refCode)}"
+                style="${refCode ? 'border-color:var(--green);' : ''}" />
+            </div>
             <div id="auth-error2" style="display:none;color:var(--red);font-size:12px;margin-bottom:12px;padding:8px;background:rgba(242,85,85,0.1);border-radius:6px;"></div>
             <div id="auth-success" style="display:none;color:var(--green);font-size:12px;margin-bottom:12px;padding:8px;background:rgba(62,207,142,0.1);border-radius:6px;"></div>
             <button class="btn-primary" style="width:100%;padding:11px;" onclick="auth.doSignup()" id="btn-signup">
@@ -92,6 +114,7 @@ const auth = {
             </button>
           </div>
 
+          ${refCode ? `<script>auth.switchTab('signup');<\/script>` : ''}
         </div>
       </div>`;
   },
@@ -100,10 +123,8 @@ const auth = {
     const isLogin = tab === 'login';
     document.getElementById('form-login').style.display  = isLogin ? '' : 'none';
     document.getElementById('form-signup').style.display = isLogin ? 'none' : '';
-    document.getElementById('tab-login').style.background  = isLogin ? 'var(--card)' : 'transparent';
-    document.getElementById('tab-login').style.color       = isLogin ? 'var(--txt)' : 'var(--muted)';
-    document.getElementById('tab-signup').style.background = isLogin ? 'transparent' : 'var(--card)';
-    document.getElementById('tab-signup').style.color      = isLogin ? 'var(--muted)' : 'var(--txt)';
+    document.getElementById('tab-login').style.cssText  = `flex:1;padding:8px;border:none;border-radius:7px;font-size:13px;cursor:pointer;font-family:inherit;background:${isLogin?'var(--card)':'transparent'};color:${isLogin?'var(--txt)':'var(--muted)'};font-weight:${isLogin?'600':'400'};`;
+    document.getElementById('tab-signup').style.cssText = `flex:1;padding:8px;border:none;border-radius:7px;font-size:13px;cursor:pointer;font-family:inherit;background:${isLogin?'transparent':'var(--card)'};color:${isLogin?'var(--muted)':'var(--txt)'};font-weight:${isLogin?'400':'600'};`;
   },
 
   async doLogin() {
@@ -116,7 +137,7 @@ const auth = {
     try {
       await this.login(email, password);
     } catch(e) {
-      errEl.textContent = 'Nesprávny email alebo heslo.';
+      errEl.textContent   = 'Nesprávny email alebo heslo.';
       errEl.style.display = 'block';
       btn.disabled = false; btn.textContent = 'Prihlásiť sa';
     }
@@ -126,22 +147,23 @@ const auth = {
     const name     = document.getElementById('auth-name').value.trim();
     const email    = document.getElementById('auth-email2').value.trim();
     const password = document.getElementById('auth-password2').value;
+    const refCode  = document.getElementById('auth-refcode').value.trim().toUpperCase();
     const errEl    = document.getElementById('auth-error2');
     const sucEl    = document.getElementById('auth-success');
     const btn      = document.getElementById('btn-signup');
     errEl.style.display = 'none'; sucEl.style.display = 'none';
     if (!name || !email || password.length < 6) {
-      errEl.textContent = 'Vyplň všetky polia. Heslo min. 6 znakov.';
+      errEl.textContent   = 'Vyplň všetky polia. Heslo min. 6 znakov.';
       errEl.style.display = 'block'; return;
     }
     btn.disabled = true; btn.textContent = 'Registrujem...';
     try {
-      await this.signup(email, password, name);
-      sucEl.textContent = 'Skontroluj email a potvrď registráciu.';
+      await this.signup(email, password, name, refCode);
+      sucEl.textContent   = '✓ Skontroluj email a potvrď registráciu.';
       sucEl.style.display = 'block';
-      btn.textContent = 'Odoslané ✓';
+      btn.textContent     = 'Odoslané ✓';
     } catch(e) {
-      errEl.textContent = e.message || 'Chyba pri registrácii.';
+      errEl.textContent   = e.message || 'Chyba pri registrácii.';
       errEl.style.display = 'block';
       btn.disabled = false; btn.textContent = 'Zaregistrovať sa';
     }
