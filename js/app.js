@@ -29,25 +29,18 @@ const app = {
   },
 
   async boot() {
-    // Nastav defaultný view podľa roly
-    const role = auth.profile?.role;
-    if (role === 'clen') {
-      this.state.view = 'clen_dashboard';
-    } else {
-      this.state.view = 'dashboard';
-    }
+    const role = previewRole.effective();
+    this.state.view = (role === 'clen') ? 'clen_dashboard' : 'dashboard';
 
     document.getElementById('root').innerHTML = this._appShell();
     modal.init();
 
-    // Načítaj dáta len pre roly ktoré ich potrebujú
-    if (role !== 'clen') {
-      await this._loadData();
-    }
+    if (role !== 'clen') await this._loadData();
 
     this.renderNav();
     this.renderContent();
     this.updateFooter();
+    this._updatePreviewBanner();
   },
 
   showLogin() {
@@ -57,9 +50,7 @@ const app = {
   async _loadData() {
     try {
       const [contacts, deals, commissions] = await Promise.all([
-        db.getContacts(),
-        db.getDeals(),
-        db.getCommissions(),
+        db.getContacts(), db.getDeals(), db.getCommissions(),
       ]);
       this.state.contacts    = contacts;
       this.state.deals       = deals;
@@ -74,7 +65,7 @@ const app = {
   },
 
   renderNav() {
-    const role  = auth.profile?.role || 'clen';
+    const role  = previewRole.effective();
     const items = NAV_BY_ROLE[role] || NAV_BY_ROLE.clen;
     document.getElementById('nav').innerHTML = items.map(n => `
       <button class="nav-btn${this.state.view === n.id ? ' active' : ''}"
@@ -95,12 +86,46 @@ const app = {
     const el = document.getElementById('sidebar-foot');
     if (!el) return;
     const p    = auth.profile;
-    const role = p?.role || 'clen';
+    const role = previewRole.effective();
     const r    = ROLES[role] || ROLES.clen;
     const name = p?.name || auth.user?.email || '';
     el.innerHTML = `
       <div style="font-weight:600;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(name)}</div>
-      <div style="font-size:10px;color:${r.color};">${r.icon} ${r.label}</div>`;
+      <div style="font-size:10px;color:${r.color};">${r.icon} ${r.label}${previewRole.current() ? ' <span style="color:var(--acc);">(náhľad)</span>' : ''}</div>`;
+  },
+
+  // Banner "Zobrazuješ ako X" — fixný navrch obsahu
+  _updatePreviewBanner() {
+    const existing = document.getElementById('preview-banner');
+    if (existing) existing.remove();
+
+    const preview = previewRole.current();
+    if (!preview || auth.profile?.role !== 'admin') return;
+
+    const r      = ROLES[preview];
+    const banner = document.createElement('div');
+    banner.id    = 'preview-banner';
+    banner.innerHTML = `
+      <div style="
+        position:fixed;bottom:20px;right:20px;z-index:500;
+        background:var(--surf);border:1px solid var(--acc-brd);
+        border-radius:12px;padding:12px 16px;
+        display:flex;align-items:center;gap:12px;
+        box-shadow:0 4px 24px rgba(0,0,0,0.4);
+        font-size:13px;
+      ">
+        <span style="color:var(--acc);">👁</span>
+        <div>
+          <div style="font-weight:600;color:var(--txt);">Náhľad: ${r.icon} ${r.label}</div>
+          <div style="font-size:11px;color:var(--muted);">Vidíš systém očami tejto roly</div>
+        </div>
+        <button onclick="previewRole.clear()"
+          style="background:rgba(242,85,85,0.12);color:var(--red);border:1px solid rgba(242,85,85,0.25);
+            border-radius:7px;padding:5px 11px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;">
+          ✕ Ukončiť
+        </button>
+      </div>`;
+    document.body.appendChild(banner);
   },
 
   async exportData() {
@@ -119,8 +144,8 @@ const app = {
   },
 
   _appShell() {
-    const role = auth.profile?.role || 'clen';
-    const showTools = role !== 'clen';
+    const role     = previewRole.effective();
+    const showTools = auth.profile?.role === 'admin' || role === 'obchodnik';
     return `
       <div id="api-setup" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:2000;align-items:center;justify-content:center;">
         <div class="setup-box">
