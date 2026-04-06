@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { id: 'commissions', icon: '💰', label: 'Provízie'    },
   { id: 'ai',          icon: '✦', label: 'AI Asistent' },
   { id: 'partners',    icon: '🤝', label: 'Partneri', adminOnly: true },
+  { id: 'profile',     icon: '👤', label: 'Môj profil'  },
 ];
 
 const VIEWS = {
@@ -16,6 +17,7 @@ const VIEWS = {
   commissions: commissionsView,
   ai:          aiView,
   partners:    partnersView,
+  profile:     profileView,
 };
 
 const app = {
@@ -95,9 +97,12 @@ const app = {
   updateFooter() {
     const el = document.getElementById('sidebar-foot');
     if (!el) return;
-    const name = auth.profile?.name || auth.user?.email || '';
+    const p    = auth.profile;
+    const name = p?.name || p?.email || auth.user?.email || '';
     const role = auth.isAdmin ? '⭐ admin' : 'partner';
-    el.innerHTML = `<div style="margin-bottom:3px;">${esc(name)}</div><div style="color:var(--acc);font-size:10px;">${role}</div>`;
+    el.innerHTML = `
+      <div style="font-weight:600;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(name)}</div>
+      <div style="color:var(--acc);font-size:10px;">${role}</div>`;
   },
 
   async exportData() {
@@ -111,6 +116,7 @@ const app = {
   showApiSetup() {
     document.getElementById('api-setup').classList.add('open');
   },
+
   saveApiKey() {
     const key = document.getElementById('api-key-input').value.trim();
     if (!key.startsWith('sk-ant-')) { alert('Neplatný kľúč.'); return; }
@@ -120,7 +126,6 @@ const app = {
 
   _appShell() {
     return `
-      <!-- API Key Setup -->
       <div id="api-setup" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:2000;align-items:center;justify-content:center;">
         <div class="setup-box">
           <h2 style="margin-bottom:8px;">✦ AI Asistent</h2>
@@ -134,7 +139,6 @@ const app = {
         </div>
       </div>
 
-      <!-- Modal -->
       <div class="overlay" id="modal-overlay">
         <div class="modal" id="modal-box">
           <div class="modal-head">
@@ -145,7 +149,6 @@ const app = {
         </div>
       </div>
 
-      <!-- App -->
       <div id="app">
         <div id="sidebar">
           <div id="sidebar-head">
@@ -153,7 +156,7 @@ const app = {
             <div class="title">CRM</div>
           </div>
           <nav id="nav"></nav>
-          <div id="sidebar-foot"></div>
+          <div id="sidebar-foot" style="padding:12px 18px;border-top:1px solid var(--brd);font-size:12px;color:var(--muted);"></div>
           <div style="padding:10px 10px 16px;border-top:1px solid var(--brd);display:flex;flex-direction:column;gap:5px;">
             <button class="btn-ghost" style="font-size:11px;padding:5px 8px;text-align:left;" onclick="app.exportData()">⬇ Export záloha</button>
             <button class="btn-ghost" style="font-size:11px;padding:5px 8px;text-align:left;" onclick="app.showApiSetup()">🔑 AI API kľúč</button>
