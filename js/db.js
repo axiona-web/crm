@@ -7,11 +7,8 @@ const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Vypočíta zobrazované meno kontaktu
 function contactDisplayName(r) {
-  if (r.entity_type === 'pravnicka') {
-    return r.company_name || r.name || '—';
-  }
+  if (r.entity_type === 'pravnicka') return r.company_name || r.name || '—';
   const parts = [r.first_name, r.last_name].filter(Boolean);
   return parts.length ? parts.join(' ') : (r.name || '—');
 }
@@ -22,16 +19,16 @@ function contactFromRow(r) {
   return {
     id:          r.id,
     name:        contactDisplayName(r),
-    entityType:  r.entity_type || 'fyzicka',
-    firstName:   r.first_name  || '',
-    lastName:    r.last_name   || '',
-    companyName: r.company_name || '',
-    ico:         r.ico         || '',
-    company:     r.company     || '',
-    phone:       r.phone       || '',
-    email:       r.email       || '',
-    type:        r.type        || 'Klient',
-    notes:       r.notes       || '',
+    entityType:  r.entity_type   || 'fyzicka',
+    firstName:   r.first_name    || '',
+    lastName:    r.last_name     || '',
+    companyName: r.company_name  || '',
+    ico:         r.ico           || '',
+    company:     r.company       || '',
+    phone:       r.phone         || '',
+    email:       r.email         || '',
+    type:        r.type          || 'Klient',
+    notes:       r.notes         || '',
     ownerId:     r.owner_id,
     createdAt:   r.created_at,
   };
@@ -62,24 +59,25 @@ function dealFromRow(r) {
     id:            r.id,
     name:          r.name,
     contactId:     r.contact_id,
-    value:         r.value         || 0,
+    value:         r.value          || 0,
     stage:         r.stage,
-    probability:   r.probability   || 0,
+    probability:   r.probability    || 0,
     expectedClose: r.expected_close || '',
-    notes:         r.notes         || '',
+    notes:         r.notes          || '',
     ownerId:       r.owner_id,
     createdAt:     r.created_at,
   };
 }
+
 function dealToRow(d, ownerId) {
   return {
     name:           d.name,
-    contact_id:     d.contactId    || null,
+    contact_id:     d.contactId     || null,
     value:          Number(d.value)       || 0,
     stage:          d.stage,
     probability:    Number(d.probability) || 0,
     expected_close: d.expectedClose || null,
-    notes:          d.notes        || null,
+    notes:          d.notes         || null,
     owner_id:       ownerId,
   };
 }
@@ -89,15 +87,16 @@ function commFromRow(r) {
     id:        r.id,
     dealId:    r.deal_id,
     contactId: r.contact_id,
-    amount:    r.amount    || 0,
-    rate:      r.rate      || 0,
+    amount:    r.amount  || 0,
+    rate:      r.rate    || 0,
     status:    r.status,
-    date:      r.date      || '',
-    notes:     r.notes     || '',
+    date:      r.date    || '',
+    notes:     r.notes   || '',
     ownerId:   r.owner_id,
     createdAt: r.created_at,
   };
 }
+
 function commToRow(c, ownerId) {
   return {
     deal_id:    c.dealId    || null,
@@ -115,6 +114,7 @@ function commToRow(c, ownerId) {
 
 const db = {
 
+  // ── Contacts ────────────────────────────────
   async getContacts() {
     const { data, error } = await _sb.from('contacts').select('*').order('created_at', { ascending: false });
     if (error) throw error;
@@ -136,6 +136,7 @@ const db = {
     if (error) throw error;
   },
 
+  // ── Deals ───────────────────────────────────
   async getDeals() {
     const { data, error } = await _sb.from('deals').select('*').order('created_at', { ascending: false });
     if (error) throw error;
@@ -157,6 +158,7 @@ const db = {
     if (error) throw error;
   },
 
+  // ── Commissions ─────────────────────────────
   async getCommissions() {
     const { data, error } = await _sb.from('commissions').select('*').order('date', { ascending: false });
     if (error) throw error;
@@ -178,6 +180,7 @@ const db = {
     if (error) throw error;
   },
 
+  // ── Auth / Profile ──────────────────────────
   async getProfile() {
     const { data: { user } } = await _sb.auth.getUser();
     if (!user) return null;
@@ -193,8 +196,21 @@ const db = {
     if (error) throw error;
   },
 
+  // ── Referral ─────────────────────────────────
+  async setReferredBy(userId, refCode) {
+    try {
+      const { data } = await _sb.from('profiles').select('id').eq('referral_code', refCode).single();
+      if (data) {
+        await _sb.from('profiles').update({ referred_by: data.id }).eq('id', userId);
+      }
+    } catch(e) {
+      console.warn('Referral code not found:', refCode);
+    }
+  },
+
   client: _sb,
 
+  // ── Export ───────────────────────────────────
   exportAll(contacts, deals, commissions) {
     const json = JSON.stringify({ contacts, deals, commissions, exportedAt: new Date().toISOString(), version: '2.0' }, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
