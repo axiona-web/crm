@@ -1,23 +1,14 @@
 // ── js/app.js ─────────────────────────────────────────────────────────────────
 
-const NAV_ITEMS = [
-  { id: 'dashboard',   icon: '⊞', label: 'Dashboard'   },
-  { id: 'contacts',    icon: '👥', label: 'Kontakty'    },
-  { id: 'pipeline',    icon: '📊', label: 'Pipeline'    },
-  { id: 'commissions', icon: '💰', label: 'Provízie'    },
-  { id: 'ai',          icon: '✦', label: 'AI Asistent' },
-  { id: 'partners',    icon: '🤝', label: 'Partneri', adminOnly: true },
-  { id: 'profile',     icon: '👤', label: 'Môj profil'  },
-];
-
 const VIEWS = {
-  dashboard:   dashboardView,
-  contacts:    contactsView,
-  pipeline:    pipelineView,
-  commissions: commissionsView,
-  ai:          aiView,
-  partners:    partnersView,
-  profile:     profileView,
+  dashboard:      dashboardView,
+  members:        membersView,
+  pipeline:       pipelineView,
+  commissions:    commissionsView,
+  ai:             aiView,
+  partners:       partnersView,
+  profile:        profileView,
+  clen_dashboard: clenDashboardView,
 };
 
 const app = {
@@ -38,9 +29,22 @@ const app = {
   },
 
   async boot() {
+    // Nastav defaultný view podľa roly
+    const role = auth.profile?.role;
+    if (role === 'clen') {
+      this.state.view = 'clen_dashboard';
+    } else {
+      this.state.view = 'dashboard';
+    }
+
     document.getElementById('root').innerHTML = this._appShell();
     modal.init();
-    await this._loadData();
+
+    // Načítaj dáta len pre roly ktoré ich potrebujú
+    if (role !== 'clen') {
+      await this._loadData();
+    }
+
     this.renderNav();
     this.renderContent();
     this.updateFooter();
@@ -60,15 +64,7 @@ const app = {
       this.state.contacts    = contacts;
       this.state.deals       = deals;
       this.state.commissions = commissions;
-    } catch(e) {
-      console.error('Load error:', e);
-    }
-  },
-
-  async reload() {
-    await this._loadData();
-    this.updateFooter();
-    this.renderContent();
+    } catch(e) { console.error('Load error:', e); }
   },
 
   setView(id) {
@@ -78,7 +74,8 @@ const app = {
   },
 
   renderNav() {
-    const items = NAV_ITEMS.filter(n => !n.adminOnly || auth.isAdmin);
+    const role  = auth.profile?.role || 'clen';
+    const items = NAV_BY_ROLE[role] || NAV_BY_ROLE.clen;
     document.getElementById('nav').innerHTML = items.map(n => `
       <button class="nav-btn${this.state.view === n.id ? ' active' : ''}"
         onclick="app.setView('${n.id}')">
@@ -98,24 +95,21 @@ const app = {
     const el = document.getElementById('sidebar-foot');
     if (!el) return;
     const p    = auth.profile;
-    const name = p?.name || p?.email || auth.user?.email || '';
-    const role = auth.isAdmin ? '⭐ admin' : 'partner';
+    const role = p?.role || 'clen';
+    const r    = ROLES[role] || ROLES.clen;
+    const name = p?.name || auth.user?.email || '';
     el.innerHTML = `
-      <div style="font-weight:600;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(name)}</div>
-      <div style="color:var(--acc);font-size:10px;">${role}</div>`;
+      <div style="font-weight:600;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(name)}</div>
+      <div style="font-size:10px;color:${r.color};">${r.icon} ${r.label}</div>`;
   },
 
   async exportData() {
     db.exportAll(this.state.contacts, this.state.deals, this.state.commissions);
   },
 
-  async logout() {
-    await auth.logout();
-  },
+  async logout() { await auth.logout(); },
 
-  showApiSetup() {
-    document.getElementById('api-setup').classList.add('open');
-  },
+  showApiSetup() { document.getElementById('api-setup').classList.add('open'); },
 
   saveApiKey() {
     const key = document.getElementById('api-key-input').value.trim();
@@ -125,6 +119,8 @@ const app = {
   },
 
   _appShell() {
+    const role = auth.profile?.role || 'clen';
+    const showTools = role !== 'clen';
     return `
       <div id="api-setup" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:2000;align-items:center;justify-content:center;">
         <div class="setup-box">
@@ -158,8 +154,8 @@ const app = {
           <nav id="nav"></nav>
           <div id="sidebar-foot" style="padding:12px 18px;border-top:1px solid var(--brd);font-size:12px;color:var(--muted);"></div>
           <div style="padding:10px 10px 16px;border-top:1px solid var(--brd);display:flex;flex-direction:column;gap:5px;">
-            <button class="btn-ghost" style="font-size:11px;padding:5px 8px;text-align:left;" onclick="app.exportData()">⬇ Export záloha</button>
-            <button class="btn-ghost" style="font-size:11px;padding:5px 8px;text-align:left;" onclick="app.showApiSetup()">🔑 AI API kľúč</button>
+            ${showTools ? `<button class="btn-ghost" style="font-size:11px;padding:5px 8px;text-align:left;" onclick="app.exportData()">⬇ Export záloha</button>` : ''}
+            ${showTools ? `<button class="btn-ghost" style="font-size:11px;padding:5px 8px;text-align:left;" onclick="app.showApiSetup()">🔑 AI API kľúč</button>` : ''}
             <button class="btn-ghost" style="font-size:11px;padding:5px 8px;text-align:left;color:var(--red);" onclick="app.logout()">⎋ Odhlásiť</button>
           </div>
         </div>
