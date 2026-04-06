@@ -220,3 +220,28 @@ const db = {
     URL.revokeObjectURL(url);
   },
 };
+
+  // ── Invite user (admin funkcia) ──────────────────────────────────────────
+  async inviteUser(email, name, role) {
+    // Použijeme Supabase magic link cez signInWithOtp ako pozvánku
+    const { error } = await _sb.auth.signInWithOtp({
+      email,
+      options: {
+        data: { name },
+        shouldCreateUser: true,
+      }
+    });
+    if (error) throw error;
+    // Nastav rolu po registrácii (cez trigger sa vytvorí profil, rolu nastavíme manuálne)
+    // Uložíme pending rolu do localStorage aby sme ju mohli nastaviť
+    // V praxi admin nastaví rolu manuálne cez select v zozname partnerov
+  },
+
+  async inviteMember(email, contactData) {
+    const { error } = await _sb.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: true }
+    });
+    if (error) throw error;
+    return { error: null };
+  },
