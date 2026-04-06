@@ -27,9 +27,10 @@ function contactFromRow(r) {
     company:     r.company       || '',
     phone:       r.phone         || '',
     email:       r.email         || '',
-    type:        r.type          || 'Klient',
+    type:        r.type          || 'Člen',
     notes:       r.notes         || '',
     ownerId:     r.owner_id,
+    memberId:    r.member_id,
     createdAt:   r.created_at,
   };
 }
@@ -48,7 +49,7 @@ function contactToRow(c, ownerId) {
     company:      c.company     || null,
     phone:        c.phone       || null,
     email:        c.email       || null,
-    type:         c.type,
+    type:         c.type        || 'Člen',
     notes:        c.notes       || null,
     owner_id:     ownerId,
   };
@@ -114,7 +115,7 @@ function commToRow(c, ownerId) {
 
 const db = {
 
-  // ── Contacts ────────────────────────────────
+  // ── Contacts / Members ───────────────────────
   async getContacts() {
     const { data, error } = await _sb.from('contacts').select('*').order('created_at', { ascending: false });
     if (error) throw error;
@@ -187,10 +188,12 @@ const db = {
     const { data } = await _sb.from('profiles').select('*').eq('id', user.id).single();
     return data;
   },
+
   async getPartners() {
     const { data } = await _sb.from('profiles').select('*').order('created_at');
     return data || [];
   },
+
   async setRole(userId, role) {
     const { error } = await _sb.from('profiles').update({ role }).eq('id', userId);
     if (error) throw error;
@@ -208,40 +211,41 @@ const db = {
     }
   },
 
-  client: _sb,
-
-  // ── Export ───────────────────────────────────
-  exportAll(contacts, deals, commissions) {
-    const json = JSON.stringify({ contacts, deals, commissions, exportedAt: new Date().toISOString(), version: '2.0' }, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url; a.download = `axiona-crm-backup-${new Date().toISOString().slice(0,10)}.json`; a.click();
-    URL.revokeObjectURL(url);
-  },
-};
-
-  // ── Invite user (admin funkcia) ──────────────────────────────────────────
+  // ── Invite ───────────────────────────────────
   async inviteUser(email, name, role) {
-    // Použijeme Supabase magic link cez signInWithOtp ako pozvánku
     const { error } = await _sb.auth.signInWithOtp({
       email,
       options: {
         data: { name },
         shouldCreateUser: true,
-      }
+      },
     });
     if (error) throw error;
-    // Nastav rolu po registrácii (cez trigger sa vytvorí profil, rolu nastavíme manuálne)
-    // Uložíme pending rolu do localStorage aby sme ju mohli nastaviť
-    // V praxi admin nastaví rolu manuálne cez select v zozname partnerov
   },
 
-  async inviteMember(email, contactData) {
+  async inviteMember(email) {
     const { error } = await _sb.auth.signInWithOtp({
       email,
-      options: { shouldCreateUser: true }
+      options: { shouldCreateUser: true },
     });
     if (error) throw error;
-    return { error: null };
   },
+
+  // ── Export ───────────────────────────────────
+  exportAll(contacts, deals, commissions) {
+    const json = JSON.stringify({
+      contacts, deals, commissions,
+      exportedAt: new Date().toISOString(),
+      version: '2.0',
+    }, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = `axiona-crm-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  client: _sb,
+};
