@@ -120,6 +120,14 @@ const pipelineView = {
         <div class="form-row"><label class="form-label">Plánované uzatvorenie</label>
           <input id="df-close" type="date" value="${d.expectedClose||''}" /></div>
       </div>
+      <div class="form-row"><label class="form-label">Produkt</label>
+        <select id="df-product">
+          <option value="">— vybrať produkt —</option>
+          ${(app.state.products||[]).filter(p=>p.active).map(p=>
+            `<option value="${p.id}"${d.productId===p.id?' selected':''}>${esc(p.name)} — ${EUR(p.price)}</option>`
+          ).join('')}
+        </select>
+      </div>
       <div class="form-row"><label class="form-label">Zdroj</label>
         <input id="df-source" value="${esc(d.source||'')}" placeholder="napr. referral, web, event" /></div>
       <div class="form-row"><label class="form-label">Popis</label>
@@ -180,7 +188,8 @@ const pipelineView = {
       contactId: this._val('df-contact') || null,
       value: Number(this._val('df-value')) || 0,
       expectedClose: this._val('df-close') || null,
-      source: this._val('df-source'),
+      source:    this._val('df-source'),
+      productId: this._val('df-product') || null,
       description: this._val('df-desc'),
       notes: this._val('df-notes'),
     };

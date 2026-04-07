@@ -114,6 +114,14 @@ const ordersView = {
           ).join('')}
         </select>
       </div>
+      <div class="form-row"><label class="form-label">Produkt</label>
+        <select id="of-product">
+          <option value="">— vybrať produkt —</option>
+          ${(app.state.products||[]).filter(p=>p.active).map(p=>
+            `<option value="${p.id}"${o.productId===p.id?' selected':''}>${esc(p.name)} — ${EUR(p.price)}</option>`
+          ).join('')}
+        </select>
+      </div>
       <div class="form-row"><label class="form-label">Hodnota (€) *</label>
         <input id="of-value" type="number" value="${o.value||''}" /></div>
       <div class="form-row"><label class="form-label">Poznámky</label>
@@ -152,6 +160,7 @@ const ordersView = {
     const obj = {
       contactId: this._val('of-contact') || null,
       dealId:    this._val('of-deal')    || null,
+      productId: this._val('of-product') || null,
       status:    this._val('of-status')  || 'pending_payment',
       value:     Number(value) || 0,
       notes:     this._val('of-notes'),
