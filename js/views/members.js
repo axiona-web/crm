@@ -48,7 +48,7 @@ const membersView = {
            </div>`
         : `<div class="list">
             ${filtered.map(c => `
-              <div class="card" style="cursor:pointer;" onclick="membersView.openEdit('${c.id}')">
+              <div class="card" style="cursor:pointer;" onclick="memberDetailView.open('${c.id}')">
                 <div class="list-item">
                   <div>
                     <div style="display:flex;align-items:center;gap:7px;margin-bottom:4px;flex-wrap:wrap;">
@@ -65,7 +65,11 @@ const membersView = {
                       ${c.email ? `<span>✉️ ${esc(c.email)}</span>` : ''}
                     </div>
                   </div>
-                  <div style="font-size:11px;color:var(--muted);white-space:nowrap;">${FMT(c.createdAt)}</div>
+                  <div style="font-size:11px;color:var(--muted);white-space:nowrap;display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+                    <span>${FMT(c.createdAt)}</span>
+                    <button class="btn-ghost" style="font-size:11px;padding:3px 8px;"
+                      onclick="event.stopPropagation();membersView.openEdit('${c.id}')">✏️ Upraviť</button>
+                  </div>
                 </div>
               </div>`).join('')}
           </div>`}`;
