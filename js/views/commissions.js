@@ -1,48 +1,77 @@
 // ── views/commissions.js ─────────────────────────────────────────────────────
 
 const commissionsView = {
+  _filter: 'all',
+
   render() {
     const { commissions, contacts, deals } = app.state;
-    const cName = id => contacts.find(c=>c.id===id)?.name||'—';
-    const dName = id => deals.find(d=>d.id===id)?.name||'—';
-    const pending = commissions.filter(c=>c.status==='Čakajúca').reduce((a,c)=>a+c.amount,0);
-    const paid    = commissions.filter(c=>c.status==='Vyplatená').reduce((a,c)=>a+c.amount,0);
-    const sorted  = [...commissions].sort((a,b)=>new Date(b.date)-new Date(a.date));
+    const cName = id => contacts.find(c => c.id === id)?.name || '—';
+    const dName = id => deals.find(d => d.id === id)?.title  || '—';
+
+    const pending  = commissions.filter(c => c.status === 'pending').reduce((a,c)  => a + c.amount, 0);
+    const approved = commissions.filter(c => c.status === 'approved').reduce((a,c) => a + c.amount, 0);
+    const paid     = commissions.filter(c => c.status === 'paid').reduce((a,c)     => a + c.amount, 0);
+
+    const filtered = commissions
+      .filter(c => this._filter === 'all' || c.status === this._filter)
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     return `
       <div class="view-head">
         <h2>Provízie</h2>
         <button class="btn-primary" onclick="commissionsView.openAdd()">+ Pridať províziu</button>
       </div>
-      <div class="comm-stats">
-        <div class="card stat-card"><div class="stat-label">Čakajúce</div><div class="stat-value mono" style="color:var(--acc);font-size:19px;">${EUR(pending)}</div></div>
-        <div class="card stat-card"><div class="stat-label">Vyplatené</div><div class="stat-value mono" style="color:var(--green);font-size:19px;">${EUR(paid)}</div></div>
-        <div class="card stat-card"><div class="stat-label">Celkom</div><div class="stat-value mono" style="font-size:19px;">${EUR(pending+paid)}</div></div>
+
+      <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+        <div class="card" style="flex:1;min-width:130px;">
+          <div class="stat-label">Čakajúce</div>
+          <div class="mono" style="font-size:20px;font-weight:700;color:${COMM_STATUS_COLORS.pending};margin-top:4px;">${EUR(pending)}</div>
+        </div>
+        <div class="card" style="flex:1;min-width:130px;">
+          <div class="stat-label">Schválené</div>
+          <div class="mono" style="font-size:20px;font-weight:700;color:${COMM_STATUS_COLORS.approved};margin-top:4px;">${EUR(approved)}</div>
+        </div>
+        <div class="card" style="flex:1;min-width:130px;">
+          <div class="stat-label">Vyplatené</div>
+          <div class="mono" style="font-size:20px;font-weight:700;color:${COMM_STATUS_COLORS.paid};margin-top:4px;">${EUR(paid)}</div>
+        </div>
       </div>
-      ${sorted.length===0
+
+      <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;">
+        <button class="filter-tab${this._filter==='all'?' active':''}"
+          onclick="commissionsView._filter='all'; app.renderContent();">Všetky (${commissions.length})</button>
+        ${Object.entries(COMM_STATUS_LABELS).map(([k,v]) => {
+          const cnt = commissions.filter(c => c.status === k).length;
+          if (!cnt) return '';
+          return `<button class="filter-tab${this._filter===k?' active':''}"
+            style="${this._filter===k?`color:${COMM_STATUS_COLORS[k]};border-color:${COMM_STATUS_COLORS[k]};background:${COMM_STATUS_COLORS[k]}18;`:''}"
+            onclick="commissionsView._filter='${k}'; app.renderContent();">${v} (${cnt})</button>`;
+        }).join('')}
+      </div>
+
+      ${filtered.length === 0
         ? `<div class="card" style="text-align:center;padding:40px;color:var(--muted);">Žiadne provízie</div>`
         : `<div class="list">
-            ${sorted.map(c=>`
+            ${filtered.map(c => `
               <div class="card">
-                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
                   <div>
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">
-                      <span class="mono" style="font-weight:700;font-size:16px;color:${c.status==='Vyplatená'?'var(--green)':'var(--acc)'};">${EUR(c.amount)}</span>
-                      ${badge(c.status, c.status==='Vyplatená'?'var(--green)':'var(--acc)')}
-                      ${c.rate?`<span style="font-size:11px;color:var(--muted);">${c.rate}%</span>`:''}
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap;">
+                      <span class="mono" style="font-weight:700;font-size:16px;">${EUR(c.amount)}</span>
+                      ${commBadge(c.status)}
+                      ${c.rate ? `<span style="font-size:11px;color:var(--muted);">${c.rate}%</span>` : ''}
                     </div>
-                    <div style="display:flex;gap:12px;font-size:12px;color:var(--muted);">
-                      ${c.contactId?`<span>👤 ${esc(cName(c.contactId))}</span>`:''}
-                      ${c.dealId?`<span>📁 ${esc(dName(c.dealId))}</span>`:''}
+                    <div style="display:flex;gap:12px;font-size:12px;color:var(--muted);flex-wrap:wrap;">
+                      ${c.contactId ? `<span>👤 ${esc(cName(c.contactId))}</span>` : ''}
+                      ${c.dealId    ? `<span>📊 ${esc(dName(c.dealId))}</span>`    : ''}
                       <span>📅 ${FMT(c.date)}</span>
                     </div>
-                    ${c.notes?`<div style="font-size:12px;color:var(--muted);margin-top:4px;">${esc(c.notes)}</div>`:''}
+                    ${c.notes ? `<div style="font-size:12px;color:var(--muted);margin-top:4px;">${esc(c.notes)}</div>` : ''}
                   </div>
-                  <div style="display:flex;gap:6px;flex-shrink:0;">
-                    <button class="btn-ghost" style="padding:5px 10px;font-size:12px;color:${c.status==='Čakajúca'?'var(--green)':'var(--muted)'};"
-                      onclick="commissionsView.toggle('${c.id}')">
-                      ${c.status==='Čakajúca'?'✓ Vyplatiť':'↩ Vrátiť'}
-                    </button>
+                  <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;">
+                    ${c.status === 'pending'  ? `<button class="btn-ghost" style="font-size:12px;color:${COMM_STATUS_COLORS.approved};" onclick="commissionsView.setStatus('${c.id}','approved')">✓ Schváliť</button>` : ''}
+                    ${c.status === 'approved' ? `<button class="btn-ghost" style="font-size:12px;color:${COMM_STATUS_COLORS.paid};"     onclick="commissionsView.setStatus('${c.id}','paid')">💳 Vyplatiť</button>` : ''}
+                    ${['pending','approved'].includes(c.status) ? `<button class="btn-ghost" style="font-size:12px;color:var(--red);" onclick="commissionsView.setStatus('${c.id}','cancelled')">✕</button>` : ''}
                     <button class="icon-btn" onclick="commissionsView.openEdit('${c.id}')">✏️</button>
                   </div>
                 </div>
@@ -50,17 +79,23 @@ const commissionsView = {
           </div>`}`;
   },
 
-  async toggle(id) {
-    const c = app.state.commissions.find(x=>x.id===id); if(!c) return;
-    const newStatus = c.status==='Čakajúca' ? 'Vyplatená' : 'Čakajúca';
-    const updated = await db.updateCommission(id, {...c, status: newStatus});
-    app.state.commissions = app.state.commissions.map(x=>x.id===id ? updated : x);
-    app.renderContent();
+  async setStatus(id, status) {
+    try {
+      const orig    = app.state.commissions.find(c => c.id === id);
+      const updated = await db.updateCommission(id, { ...orig, status });
+      app.state.commissions = app.state.commissions.map(c => c.id === id ? updated : c);
+      app.renderContent();
+    } catch(e) { alert('Chyba: ' + e.message); }
   },
 
   _form(c, isNew) {
-    const cOpts = app.state.contacts.map(x=>`<option value="${x.id}"${c.contactId===x.id?' selected':''}>${esc(x.name)}</option>`).join('');
-    const dOpts = app.state.deals.map(x=>`<option value="${x.id}"${c.dealId===x.id?' selected':''}>${esc(x.name)}</option>`).join('');
+    const cOpts = app.state.contacts.map(x =>
+      `<option value="${x.id}"${c.contactId===x.id?' selected':''}>${esc(x.name)}</option>`
+    ).join('');
+    const dOpts = app.state.deals.map(x =>
+      `<option value="${x.id}"${c.dealId===x.id?' selected':''}>${esc(x.title)}</option>`
+    ).join('');
+
     return `
       <div class="form-grid-2">
         <div class="form-row"><label class="form-label">Suma (€) *</label><input id="cm-amount" type="number" value="${c.amount||''}" /></div>
@@ -68,57 +103,74 @@ const commissionsView = {
       </div>
       <div class="form-row"><label class="form-label">Kontakt</label>
         <select id="cm-contact"><option value="">— vybrať —</option>${cOpts}</select></div>
-      <div class="form-row"><label class="form-label">Obchod</label>
+      <div class="form-row"><label class="form-label">Lead / Obchod</label>
         <select id="cm-deal"><option value="">— vybrať —</option>${dOpts}</select></div>
       <div class="form-grid-2">
         <div class="form-row"><label class="form-label">Stav</label>
           <select id="cm-status">
-            <option${c.status==='Čakajúca'?' selected':''}>Čakajúca</option>
-            <option${c.status==='Vyplatená'?' selected':''}>Vyplatená</option>
-          </select></div>
+            ${Object.entries(COMM_STATUS_LABELS).map(([k,v]) =>
+              `<option value="${k}"${(c.status||'pending')===k?' selected':''}>${v}</option>`
+            ).join('')}
+          </select>
+        </div>
         <div class="form-row"><label class="form-label">Dátum</label><input id="cm-date" type="date" value="${c.date||''}" /></div>
       </div>
       <div class="form-row"><label class="form-label">Poznámky</label>
         <textarea id="cm-notes" style="min-height:55px;resize:vertical;">${esc(c.notes||'')}</textarea></div>
+      <div id="cm-error" style="display:none;color:var(--red);font-size:12px;padding:8px;background:rgba(242,85,85,0.1);border-radius:6px;"></div>
       <div class="form-actions">
-        <button class="btn-primary" onclick="commissionsView.save('${c.id||''}',${isNew})">Uložiť</button>
+        <button class="btn-primary" id="cm-submit" onclick="commissionsView.save('${c.id||''}',${isNew})">Uložiť</button>
         <button class="btn-ghost" onclick="modal.close()">Zrušiť</button>
-        ${!isNew?`<button class="btn-danger" style="margin-left:auto;" onclick="commissionsView.delete('${c.id}')">Vymazať</button>`:''}
+        ${!isNew ? `<button class="btn-danger" style="margin-left:auto;" onclick="commissionsView.delete('${c.id}')">Vymazať</button>` : ''}
       </div>`;
   },
 
-  openAdd()    { modal.open('Nová provízia', this._form({dealId:'',contactId:'',amount:'',rate:'',status:'Čakajúca',date:new Date().toISOString().slice(0,10),notes:''}, true)); },
-  openEdit(id) { const c=app.state.commissions.find(x=>x.id===id); if(c) modal.open('Upraviť províziu', this._form(c, false)); },
+  openAdd()    { modal.open('Nová provízia', this._form({ dealId:'', contactId:'', amount:'', rate:'', status:'pending', date: new Date().toISOString().slice(0,10), notes:'' }, true)); },
+  openEdit(id) { const c = app.state.commissions.find(x => x.id === id); if(c) modal.open('Upraviť províziu', this._form(c, false)); },
+
+  _val(id) { const el = document.getElementById(id); return el ? el.value.trim() : ''; },
 
   async save(id, isNew) {
+    const amount = this._val('cm-amount');
+    const errEl  = document.getElementById('cm-error');
+    errEl.style.display = 'none';
+    if (!amount) { errEl.textContent = 'Zadaj sumu.'; errEl.style.display = 'block'; return; }
+
+    const btn = document.getElementById('cm-submit');
+    if (btn) { btn.disabled = true; btn.textContent = 'Ukladám...'; }
+
     const obj = {
-      amount:    Number(document.getElementById('cm-amount').value)||0,
-      rate:      Number(document.getElementById('cm-rate').value)||0,
-      contactId: document.getElementById('cm-contact').value,
-      dealId:    document.getElementById('cm-deal').value,
-      status:    document.getElementById('cm-status').value,
-      date:      document.getElementById('cm-date').value,
-      notes:     document.getElementById('cm-notes').value.trim(),
+      amount:    Number(amount) || 0,
+      rate:      Number(this._val('cm-rate')) || 0,
+      contactId: this._val('cm-contact') || null,
+      dealId:    this._val('cm-deal')    || null,
+      status:    this._val('cm-status')  || 'pending',
+      date:      this._val('cm-date'),
+      notes:     this._val('cm-notes'),
     };
-    if (!obj.amount) return;
+
     try {
       if (isNew) {
         const created = await db.createCommission(obj);
         app.state.commissions.unshift(created);
       } else {
-        const orig = app.state.commissions.find(c=>c.id===id);
-        const updated = await db.updateCommission(id, {...orig,...obj});
-        app.state.commissions = app.state.commissions.map(c=>c.id===id ? updated : c);
+        const orig    = app.state.commissions.find(c => c.id === id);
+        const updated = await db.updateCommission(id, { ...orig, ...obj });
+        app.state.commissions = app.state.commissions.map(c => c.id === id ? updated : c);
       }
       modal.close(); app.renderContent();
-    } catch(e) { alert('Chyba: ' + e.message); }
+    } catch(e) {
+      errEl.textContent = 'Chyba: ' + (e.message || 'skús znova');
+      errEl.style.display = 'block';
+      if (btn) { btn.disabled = false; btn.textContent = 'Uložiť'; }
+    }
   },
 
   async delete(id) {
     if (!confirm('Vymazať províziu?')) return;
     try {
       await db.deleteCommission(id);
-      app.state.commissions = app.state.commissions.filter(c=>c.id!==id);
+      app.state.commissions = app.state.commissions.filter(c => c.id !== id);
       modal.close(); app.renderContent();
     } catch(e) { alert('Chyba: ' + e.message); }
   },
