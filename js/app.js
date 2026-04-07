@@ -4,6 +4,7 @@ const VIEWS = {
   dashboard:      dashboardView,
   members:        membersView,
   pipeline:       pipelineView,
+  orders:         ordersView,
   commissions:    commissionsView,
   ai:             aiView,
   partners:       partnersView,
@@ -16,27 +17,22 @@ const app = {
     view:        'dashboard',
     contacts:    [],
     deals:       [],
+    orders:      [],
     commissions: [],
   },
 
   async init() {
     await auth.init();
-    if (auth.user) {
-      await this.boot();
-    } else {
-      this.showLogin();
-    }
+    if (auth.user) await this.boot();
+    else this.showLogin();
   },
 
   async boot() {
     const role = previewRole.effective();
     this.state.view = (role === 'clen') ? 'clen_dashboard' : 'dashboard';
-
     document.getElementById('root').innerHTML = this._appShell();
     modal.init();
-
     if (role !== 'clen') await this._loadData();
-
     this.renderNav();
     this.renderContent();
     this.updateFooter();
@@ -49,11 +45,12 @@ const app = {
 
   async _loadData() {
     try {
-      const [contacts, deals, commissions] = await Promise.all([
-        db.getContacts(), db.getDeals(), db.getCommissions(),
+      const [contacts, deals, orders, commissions] = await Promise.all([
+        db.getContacts(), db.getDeals(), db.getOrders(), db.getCommissions(),
       ]);
       this.state.contacts    = contacts;
       this.state.deals       = deals;
+      this.state.orders      = orders;
       this.state.commissions = commissions;
     } catch(e) { console.error('Load error:', e); }
   },
@@ -94,26 +91,19 @@ const app = {
       <div style="font-size:10px;color:${r.color};">${r.icon} ${r.label}${previewRole.current() ? ' <span style="color:var(--acc);">(náhľad)</span>' : ''}</div>`;
   },
 
-  // Banner "Zobrazuješ ako X" — fixný navrch obsahu
   _updatePreviewBanner() {
     const existing = document.getElementById('preview-banner');
     if (existing) existing.remove();
-
     const preview = previewRole.current();
     if (!preview || auth.profile?.role !== 'admin') return;
-
     const r      = ROLES[preview];
     const banner = document.createElement('div');
     banner.id    = 'preview-banner';
     banner.innerHTML = `
-      <div style="
-        position:fixed;bottom:20px;right:20px;z-index:500;
-        background:var(--surf);border:1px solid var(--acc-brd);
-        border-radius:12px;padding:12px 16px;
-        display:flex;align-items:center;gap:12px;
-        box-shadow:0 4px 24px rgba(0,0,0,0.4);
-        font-size:13px;
-      ">
+      <div style="position:fixed;bottom:20px;right:20px;z-index:500;
+        background:var(--surf);border:1px solid var(--acc-brd);border-radius:12px;
+        padding:12px 16px;display:flex;align-items:center;gap:12px;
+        box-shadow:0 4px 24px rgba(0,0,0,0.4);font-size:13px;">
         <span style="color:var(--acc);">👁</span>
         <div>
           <div style="font-weight:600;color:var(--txt);">Náhľad: ${r.icon} ${r.label}</div>
@@ -121,7 +111,7 @@ const app = {
         </div>
         <button onclick="previewRole.clear()"
           style="background:rgba(242,85,85,0.12);color:var(--red);border:1px solid rgba(242,85,85,0.25);
-            border-radius:7px;padding:5px 11px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;">
+            border-radius:7px;padding:5px 11px;font-size:12px;cursor:pointer;font-family:inherit;">
           ✕ Ukončiť
         </button>
       </div>`;
@@ -133,8 +123,7 @@ const app = {
   },
 
   async logout() { await auth.logout(); },
-
-  showApiSetup() { document.getElementById('api-setup').classList.add('open'); },
+  showApiSetup()  { document.getElementById('api-setup').classList.add('open'); },
 
   saveApiKey() {
     const key = document.getElementById('api-key-input').value.trim();
@@ -144,8 +133,9 @@ const app = {
   },
 
   _appShell() {
-    const role     = previewRole.effective();
-    const showTools = auth.profile?.role === 'admin' || role === 'obchodnik';
+    const role      = previewRole.effective();
+    const realRole  = auth.profile?.role;
+    const showTools = realRole === 'admin' || role === 'obchodnik';
     return `
       <div id="api-setup" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:2000;align-items:center;justify-content:center;">
         <div class="setup-box">
@@ -159,7 +149,6 @@ const app = {
           </div>
         </div>
       </div>
-
       <div class="overlay" id="modal-overlay">
         <div class="modal" id="modal-box">
           <div class="modal-head">
@@ -169,13 +158,9 @@ const app = {
           <div id="modal-body"></div>
         </div>
       </div>
-
       <div id="app">
         <div id="sidebar">
-          <div id="sidebar-head">
-            <div class="brand">Axiona</div>
-            <div class="title">CRM</div>
-          </div>
+          <div id="sidebar-head"><div class="brand">Axiona</div><div class="title">CRM</div></div>
           <nav id="nav"></nav>
           <div id="sidebar-foot" style="padding:12px 18px;border-top:1px solid var(--brd);font-size:12px;color:var(--muted);"></div>
           <div style="padding:10px 10px 16px;border-top:1px solid var(--brd);display:flex;flex-direction:column;gap:5px;">

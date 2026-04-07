@@ -1,11 +1,11 @@
-// ── js/db.js — Supabase dátová vrstva ────────────────────────────────────────
+// ── js/db.js ──────────────────────────────────────────────────────────────────
 
 const SUPABASE_URL = 'https://cdusjrckwiqsfbrvczgs.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNkdXNqcmNrd2lxc2ZicnZjemdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU0MDg2MTcsImV4cCI6MjA5MDk4NDYxN30.WMFMqeJB-MT9T-1dBz2lzvFDI0yfZFKNCXUZ5QBliNs';
 
 const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Mappers ───────────────────────────────────────────────────────────────────
 
 function contactDisplayName(r) {
   if (r.entity_type === 'pravnicka') return r.company_name || r.name || '—';
@@ -13,101 +13,86 @@ function contactDisplayName(r) {
   return parts.length ? parts.join(' ') : (r.name || '—');
 }
 
-// ── Mappers ───────────────────────────────────────────────────────────────────
-
 function contactFromRow(r) {
   return {
-    id:          r.id,
-    name:        contactDisplayName(r),
-    entityType:  r.entity_type   || 'fyzicka',
-    firstName:   r.first_name    || '',
-    lastName:    r.last_name     || '',
-    companyName: r.company_name  || '',
-    ico:         r.ico           || '',
-    company:     r.company       || '',
-    phone:       r.phone         || '',
-    email:       r.email         || '',
-    type:        r.type          || 'Člen',
-    notes:       r.notes         || '',
-    ownerId:     r.owner_id,
-    memberId:    r.member_id,
-    createdAt:   r.created_at,
+    id: r.id, name: contactDisplayName(r),
+    entityType: r.entity_type || 'fyzicka',
+    firstName: r.first_name || '', lastName: r.last_name || '',
+    companyName: r.company_name || '', ico: r.ico || '',
+    phone: r.phone || '', email: r.email || '',
+    type: r.type || 'Člen', notes: r.notes || '',
+    ownerId: r.owner_id, memberId: r.member_id, createdAt: r.created_at,
   };
 }
 
 function contactToRow(c, ownerId) {
-  const displayName = c.entityType === 'pravnicka'
+  const name = c.entityType === 'pravnicka'
     ? (c.companyName || '')
     : [c.firstName, c.lastName].filter(Boolean).join(' ');
   return {
-    name:         displayName,
-    entity_type:  c.entityType  || 'fyzicka',
-    first_name:   c.firstName   || null,
-    last_name:    c.lastName    || null,
-    company_name: c.companyName || null,
-    ico:          c.ico         || null,
-    company:      c.company     || null,
-    phone:        c.phone       || null,
-    email:        c.email       || null,
-    type:         c.type        || 'Člen',
-    notes:        c.notes       || null,
-    owner_id:     ownerId,
+    name, entity_type: c.entityType || 'fyzicka',
+    first_name: c.firstName || null, last_name: c.lastName || null,
+    company_name: c.companyName || null, ico: c.ico || null,
+    phone: c.phone || null, email: c.email || null,
+    type: c.type || 'Člen', notes: c.notes || null, owner_id: ownerId,
   };
 }
 
 function dealFromRow(r) {
   return {
-    id:            r.id,
-    name:          r.name,
-    contactId:     r.contact_id,
-    value:         r.value          || 0,
-    stage:         r.stage,
-    probability:   r.probability    || 0,
-    expectedClose: r.expected_close || '',
-    notes:         r.notes          || '',
-    ownerId:       r.owner_id,
-    createdAt:     r.created_at,
+    id: r.id, title: r.title, description: r.description || '',
+    contactId: r.contact_id, ownerId: r.owner_id, assignedTo: r.assigned_to,
+    status: r.status || 'new', value: r.value || 0, currency: r.currency || 'EUR',
+    expectedClose: r.expected_close || '', closedAt: r.closed_at || '',
+    source: r.source || '', notes: r.notes || '', tags: r.tags || [],
+    createdAt: r.created_at, updatedAt: r.updated_at,
   };
 }
 
 function dealToRow(d, ownerId) {
   return {
-    name:           d.name,
-    contact_id:     d.contactId     || null,
-    value:          Number(d.value)       || 0,
-    stage:          d.stage,
-    probability:    Number(d.probability) || 0,
-    expected_close: d.expectedClose || null,
-    notes:          d.notes         || null,
-    owner_id:       ownerId,
+    title: d.title, description: d.description || null,
+    contact_id: d.contactId || null, owner_id: ownerId,
+    assigned_to: d.assignedTo || null, status: d.status || 'new',
+    value: Number(d.value) || 0, currency: d.currency || 'EUR',
+    expected_close: d.expectedClose || null, source: d.source || null,
+    notes: d.notes || null, tags: d.tags || [],
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function orderFromRow(r) {
+  return {
+    id: r.id, dealId: r.deal_id, contactId: r.contact_id, ownerId: r.owner_id,
+    status: r.status || 'pending_payment', value: r.value || 0,
+    currency: r.currency || 'EUR', notes: r.notes || '',
+    createdAt: r.created_at, updatedAt: r.updated_at,
+  };
+}
+
+function orderToRow(o, ownerId) {
+  return {
+    deal_id: o.dealId || null, contact_id: o.contactId || null,
+    owner_id: ownerId, status: o.status || 'pending_payment',
+    value: Number(o.value) || 0, currency: o.currency || 'EUR',
+    notes: o.notes || null, updated_at: new Date().toISOString(),
   };
 }
 
 function commFromRow(r) {
   return {
-    id:        r.id,
-    dealId:    r.deal_id,
-    contactId: r.contact_id,
-    amount:    r.amount  || 0,
-    rate:      r.rate    || 0,
-    status:    r.status,
-    date:      r.date    || '',
-    notes:     r.notes   || '',
-    ownerId:   r.owner_id,
-    createdAt: r.created_at,
+    id: r.id, dealId: r.deal_id, contactId: r.contact_id, ownerId: r.owner_id,
+    amount: r.amount || 0, rate: r.rate || 0, status: r.status || 'pending',
+    date: r.date || '', notes: r.notes || '', createdAt: r.created_at,
   };
 }
 
 function commToRow(c, ownerId) {
   return {
-    deal_id:    c.dealId    || null,
-    contact_id: c.contactId || null,
-    amount:     Number(c.amount) || 0,
-    rate:       Number(c.rate)   || 0,
-    status:     c.status,
-    date:       c.date      || null,
-    notes:      c.notes     || null,
-    owner_id:   ownerId,
+    deal_id: c.dealId || null, contact_id: c.contactId || null,
+    owner_id: ownerId, amount: Number(c.amount) || 0,
+    rate: Number(c.rate) || 0, status: c.status || 'pending',
+    date: c.date || null, notes: c.notes || null,
   };
 }
 
@@ -115,7 +100,7 @@ function commToRow(c, ownerId) {
 
 const db = {
 
-  // ── Contacts / Members ───────────────────────
+  // ── Contacts ─────────────────────────────────
   async getContacts() {
     const { data, error } = await _sb.from('contacts').select('*').order('created_at', { ascending: false });
     if (error) throw error;
@@ -137,7 +122,7 @@ const db = {
     if (error) throw error;
   },
 
-  // ── Deals ───────────────────────────────────
+  // ── Deals ─────────────────────────────────────
   async getDeals() {
     const { data, error } = await _sb.from('deals').select('*').order('created_at', { ascending: false });
     if (error) throw error;
@@ -150,6 +135,7 @@ const db = {
     return dealFromRow(data);
   },
   async updateDeal(id, d) {
+    const orig = await _sb.auth.getUser();
     const { data, error } = await _sb.from('deals').update(dealToRow(d, d.ownerId)).eq('id', id).select().single();
     if (error) throw error;
     return dealFromRow(data);
@@ -159,9 +145,31 @@ const db = {
     if (error) throw error;
   },
 
-  // ── Commissions ─────────────────────────────
+  // ── Orders ────────────────────────────────────
+  async getOrders() {
+    const { data, error } = await _sb.from('orders').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(orderFromRow);
+  },
+  async createOrder(o) {
+    const uid = (await _sb.auth.getUser()).data.user.id;
+    const { data, error } = await _sb.from('orders').insert(orderToRow(o, uid)).select().single();
+    if (error) throw error;
+    return orderFromRow(data);
+  },
+  async updateOrder(id, o) {
+    const { data, error } = await _sb.from('orders').update(orderToRow(o, o.ownerId)).eq('id', id).select().single();
+    if (error) throw error;
+    return orderFromRow(data);
+  },
+  async deleteOrder(id) {
+    const { error } = await _sb.from('orders').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  // ── Commissions ───────────────────────────────
   async getCommissions() {
-    const { data, error } = await _sb.from('commissions').select('*').order('date', { ascending: false });
+    const { data, error } = await _sb.from('commissions').select('*').order('created_at', { ascending: false });
     if (error) throw error;
     return (data || []).map(commFromRow);
   },
@@ -181,69 +189,46 @@ const db = {
     if (error) throw error;
   },
 
-  // ── Auth / Profile ──────────────────────────
+  // ── Profile / Auth ────────────────────────────
   async getProfile() {
     const { data: { user } } = await _sb.auth.getUser();
     if (!user) return null;
     const { data } = await _sb.from('profiles').select('*').eq('id', user.id).single();
     return data;
   },
-
   async getPartners() {
     const { data } = await _sb.from('profiles').select('*').order('created_at');
     return data || [];
   },
-
   async setRole(userId, role) {
     const { error } = await _sb.from('profiles').update({ role }).eq('id', userId);
     if (error) throw error;
   },
 
-  // ── Referral ─────────────────────────────────
+  // ── Referral ──────────────────────────────────
   async setReferredBy(userId, refCode) {
     try {
       const { data } = await _sb.from('profiles').select('id').eq('referral_code', refCode).single();
-      if (data) {
-        await _sb.from('profiles').update({ referred_by: data.id }).eq('id', userId);
-      }
-    } catch(e) {
-      console.warn('Referral code not found:', refCode);
-    }
+      if (data) await _sb.from('profiles').update({ referred_by: data.id }).eq('id', userId);
+    } catch(e) { console.warn('Referral code not found:', refCode); }
   },
 
-  // ── Invite ───────────────────────────────────
+  // ── Invite ────────────────────────────────────
   async inviteUser(email, name, role) {
     const { error } = await _sb.auth.signInWithOtp({
       email,
-      options: {
-        data: { name },
-        shouldCreateUser: true,
-      },
+      options: { data: { name }, shouldCreateUser: true },
     });
     if (error) throw error;
   },
 
-  async inviteMember(email) {
-    const { error } = await _sb.auth.signInWithOtp({
-      email,
-      options: { shouldCreateUser: true },
-    });
-    if (error) throw error;
-  },
-
-  // ── Export ───────────────────────────────────
+  // ── Export ────────────────────────────────────
   exportAll(contacts, deals, commissions) {
-    const json = JSON.stringify({
-      contacts, deals, commissions,
-      exportedAt: new Date().toISOString(),
-      version: '2.0',
-    }, null, 2);
+    const json = JSON.stringify({ contacts, deals, commissions, exportedAt: new Date().toISOString(), version: '3.0' }, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
-    a.href = url;
-    a.download = `axiona-crm-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
+    a.href = url; a.download = `axiona-crm-backup-${new Date().toISOString().slice(0,10)}.json`; a.click();
     URL.revokeObjectURL(url);
   },
 
