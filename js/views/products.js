@@ -28,10 +28,11 @@ const REWARD_TRIGGERS = {
 };
 
 const WORKFLOW_TYPES = {
-  ai_web:      'AI / Web',
-  financial:   'Financie',
-  real_estate: 'Reality',
-  partner:     'Partner',
+  ai_web:      '⚡ Rýchly produkt',
+  projektovy:  '🏗️ Projektový produkt',
+  financial:   '💳 Financie',
+  real_estate: '🏠 Reality',
+  partner:     '🤝 Partner',
 };
 
 const productsView = {
@@ -141,7 +142,8 @@ const productsView = {
                         ${p.description ? `<div style="font-size:12px;color:var(--muted);margin-bottom:6px;">${esc(p.description)}</div>` : ''}
                         <div style="display:flex;gap:6px;flex-wrap:wrap;">
                           <span class="badge" style="background:var(--surf);color:var(--muted);border:1px solid var(--brd);font-size:10px;">${pt.icon} ${pt.label}</span>
-                          <span class="badge" style="background:var(--surf);color:var(--muted);border:1px solid var(--brd);font-size:10px;">👷 ${esc(FULFILLMENT_OPTIONS[p.fulfillment_by] || p.fulfillment_by || '—')}</span>
+                          <span class="badge" style="background:var(--surf);color:var(--muted);border:1px solid var(--brd);font-size:10px;">${esc(WORKFLOW_TYPES[p.workflow_type] || p.workflow_type || '—')}</span>
+                          <span class="badge" style="background:var(--surf);color:var(--muted);border:1px solid var(--brd);font-size:10px;">👷 ${esc(FULFILLMENT_OPTIONS[p.fulfillment_by || p.fulfillment] || p.fulfillment || '—')}</span>
                           <span class="badge" style="background:var(--surf);color:var(--muted);border:1px solid var(--brd);font-size:10px;">${rt.icon} ${rt.label}</span>
                           ${p.points_enabled     ? `<span class="badge" style="background:rgba(212,148,58,0.1);color:var(--acc);border:1px solid var(--acc-brd);font-size:10px;">⭐ Body</span>` : ''}
                           ${p.commission_enabled ? `<span class="badge" style="background:rgba(62,207,142,0.1);color:var(--green);border:1px solid rgba(62,207,142,0.25);font-size:10px;">💰 Provízia</span>` : ''}
@@ -221,7 +223,7 @@ const productsView = {
       <div class="form-row"><label class="form-label">Realizuje</label>
         <select id="pf-fulfillment">
           ${Object.entries(FULFILLMENT_OPTIONS).map(([k,v]) =>
-            `<option value="${k}"${(p.fulfillment_by||'admin')===k?' selected':''}>${v}</option>`
+            `<option value="${k}"${(p.fulfillment_by||p.fulfillment||'admin')===k?' selected':''}>${v}</option>`
           ).join('')}
         </select>
       </div>
@@ -384,6 +386,7 @@ const productsView = {
       subcategory:               this._val('pf-subcategory')   || null,
       product_type:              this._val('pf-type')          || 'internal',
       workflow_type:             this._val('pf-workflow')      || 'ai_web',
+      fulfillment:               this._val('pf-fulfillment')   || 'admin',
       fulfillment_by:            this._val('pf-fulfillment')   || 'admin',
       is_active:                 this._chk('pf-active'),
       active:                    this._chk('pf-active'),
