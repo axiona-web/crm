@@ -94,6 +94,7 @@ const NAV_BY_ROLE = {
     { id: 'orders',      icon: '📦', label: 'Objednávky'  },
     { id: 'commissions', icon: '💰', label: 'Provízie'    },
     { id: 'partners',    icon: '🤝', label: 'Tím'         },
+    { id: 'products',    icon: '🛍️', label: 'Produkty'    },
     { id: 'ai',          icon: '✦', label: 'AI Asistent' },
     { id: 'profile',     icon: '👤', label: 'Môj profil'  },
   ],

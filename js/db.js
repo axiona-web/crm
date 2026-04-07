@@ -45,6 +45,7 @@ function dealFromRow(r) {
     status: r.status || 'new', value: r.value || 0, currency: r.currency || 'EUR',
     expectedClose: r.expected_close || '', closedAt: r.closed_at || '',
     source: r.source || '', notes: r.notes || '', tags: r.tags || [],
+    productId: r.product_id || null,
     createdAt: r.created_at, updatedAt: r.updated_at,
   };
 }
@@ -57,6 +58,7 @@ function dealToRow(d, ownerId) {
     value: Number(d.value) || 0, currency: d.currency || 'EUR',
     expected_close: d.expectedClose || null, source: d.source || null,
     notes: d.notes || null, tags: d.tags || [],
+    product_id: d.productId || null,
     updated_at: new Date().toISOString(),
   };
 }
@@ -66,6 +68,7 @@ function orderFromRow(r) {
     id: r.id, dealId: r.deal_id, contactId: r.contact_id, ownerId: r.owner_id,
     status: r.status || 'pending_payment', value: r.value || 0,
     currency: r.currency || 'EUR', notes: r.notes || '',
+    productId: r.product_id || null,
     createdAt: r.created_at, updatedAt: r.updated_at,
   };
 }
@@ -75,7 +78,8 @@ function orderToRow(o, ownerId) {
     deal_id: o.dealId || null, contact_id: o.contactId || null,
     owner_id: ownerId, status: o.status || 'pending_payment',
     value: Number(o.value) || 0, currency: o.currency || 'EUR',
-    notes: o.notes || null, updated_at: new Date().toISOString(),
+    notes: o.notes || null, product_id: o.productId || null,
+    updated_at: new Date().toISOString(),
   };
 }
 

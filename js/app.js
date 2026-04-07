@@ -6,6 +6,7 @@ const VIEWS = {
   pipeline:       pipelineView,
   orders:         ordersView,
   commissions:    commissionsView,
+  products:       productsView,
   ai:             aiView,
   partners:       partnersView,
   profile:        profileView,
@@ -19,6 +20,7 @@ const app = {
     deals:       [],
     orders:      [],
     commissions: [],
+    products:    [],
   },
 
   async init() {
@@ -45,13 +47,15 @@ const app = {
 
   async _loadData() {
     try {
-      const [contacts, deals, orders, commissions] = await Promise.all([
+      const [contacts, deals, orders, commissions, products] = await Promise.all([
         db.getContacts(), db.getDeals(), db.getOrders(), db.getCommissions(),
+        db.client.from('products').select('*').order('name').then(r => r.data || []),
       ]);
       this.state.contacts    = contacts;
       this.state.deals       = deals;
       this.state.orders      = orders;
       this.state.commissions = commissions;
+      this.state.products    = products;
     } catch(e) { console.error('Load error:', e); }
   },
 
