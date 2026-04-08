@@ -1,8 +1,9 @@
 // ── views/products.js ────────────────────────────────────────────────────────
 
 const PRODUCT_CATEGORIES = {
-  'AI & Automatizácia': ['Chatboty', 'Automatizácie', 'AI nástroje'],
-  'Web & Digitálne':    ['Web Basic', 'Web Pro', 'Landing page', 'Správa webu'],
+  'AI & Automatizácia': ['Chatboti', 'Automatizácie'],
+  'Web & Digitálne':    ['Web'],
+  'View SK služby':     ['Google Firemný profil', 'Virtuálne prehliadky', 'Google Ads', 'NFC produkty', 'Balíčky View SK'],
   'Reality':            ['Predaj nehnuteľnosti', 'Nábor nehnuteľnosti', 'Obhliadky'],
   'Financie':           ['Hypotéky', 'Poistenie', 'Investície'],
 };
@@ -11,6 +12,9 @@ const PRODUCT_TYPES = {
   standard:    { label: 'Standard',  icon: '📦' },
   custom:      { label: 'Custom',    icon: '⚙️' },
   entry:       { label: 'Entry',     icon: '🚪' },
+  recurring:   { label: 'Recurring', icon: '🔄' },
+  add_on:      { label: 'Add-on',    icon: '➕' },
+  package:     { label: 'Balíček',   icon: '🎁' },
   internal:    { label: 'Interný',   icon: '🏢' },
   financial:   { label: 'Finančný',  icon: '💳' },
   real_estate: { label: 'Reality',   icon: '🏠' },
