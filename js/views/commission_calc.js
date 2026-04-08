@@ -241,7 +241,7 @@ const commissionCalcView = {
             <input type="range" min="${lim.min}" max="${lim.max}" step="1"
               value="${Math.min(Math.max(r.pct,lim.min),lim.max)}"
               style="width:80px;"
-              oninput="commissionCalcView._setPct('${p.id}',+this.value); document.getElementById('pct-lbl-${p.id}').textContent=this.value+'%'; document.getElementById('pct-lbl-${p.id}').style.color=${inSafe?'\'var(--green)\'':'\'var(--acc)\''}>">
+              oninput="commissionCalcView._setPct('${p.id}',+this.value)">
             <span id="pct-lbl-${p.id}" style="min-width:34px;font-size:13px;font-weight:700;color:${inSafe?'var(--green)':'var(--acc)'};">${r.pct}%</span>
           </div>
           <div style="font-size:10px;color:var(--muted);margin-top:2px;">
@@ -298,7 +298,14 @@ const commissionCalcView = {
   },
 
   // ── Settery ───────────────────────────────────────────────────────────────
-  _setPct(id, val) { if(this._rules[id]) this._rules[id].pct=val; this._updateRow(id); },
+  _setPct(id, val) {
+    if (this._rules[id]) this._rules[id].pct = val;
+    const lim    = this._limits(this._products.find(p=>p.id===id)?.base_price || 0);
+    const inSafe = val >= lim.safe[0] && val <= lim.safe[1];
+    const lbl    = document.getElementById('pct-lbl-'+id);
+    if (lbl) { lbl.textContent = val+'%'; lbl.style.color = inSafe ? 'var(--green)' : 'var(--acc)'; }
+    this._updateRow(id);
+  },
   _setBonus(id, val) { if(this._rules[id]) this._rules[id].bonus=val; this._updateRow(id); },
   _setHiddenProduct(id, val) { if(this._rules[id]) this._rules[id].hidden=val; this._updateRow(id); },
   _setHiddenGlobal(val) {
