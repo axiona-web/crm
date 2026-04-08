@@ -128,13 +128,18 @@ const app = {
   },
 
   async logout() { await auth.logout(); },
-  showApiSetup()  { document.getElementById('api-setup').classList.add('open'); },
+  showApiSetup() {
+    const el = document.getElementById('api-setup');
+    if (el) { el.style.display = 'flex'; }
+  },
 
   saveApiKey() {
     const key = document.getElementById('api-key-input').value.trim();
-    if (!key.startsWith('sk-ant-')) { alert('Neplatný kľúč.'); return; }
+    if (!key.startsWith('sk-ant-')) { alert('Neplatný kľúč. Musí začínať sk-ant-'); return; }
     localStorage.setItem('axiona_ai_key', key);
-    document.getElementById('api-setup').classList.remove('open');
+    const el = document.getElementById('api-setup');
+    if (el) el.style.display = 'none';
+    alert('✓ API kľúč uložený');
   },
 
   _appShell() {
