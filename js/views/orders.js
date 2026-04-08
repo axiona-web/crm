@@ -18,7 +18,14 @@ const ordersView = {
 
     const filtered = orders
       .filter(o => this._filter === 'all' || o.status === this._filter)
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      .sort((a, b) => {
+        const pa = app.state.products?.find(p => p.id === a.productId);
+        const pb = app.state.products?.find(p => p.id === b.productId);
+        const ca = pa ? (pa.category + pa.subcategory + pa.name) : 'zzz';
+        const cb = pb ? (pb.category + pb.subcategory + pb.name) : 'zzz';
+        if (ca !== cb) return ca.localeCompare(cb, 'sk');
+        return new Date(b.createdAt) - new Date(a.createdAt);
+      });
 
     return `
       <div class="view-head">
