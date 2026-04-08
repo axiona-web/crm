@@ -1,11 +1,16 @@
 // ── views/commission_calc.js ─────────────────────────────────────────────────
 
 const commissionCalcView = {
-  _products: [],
-  _rules:    {},
-  _loaded:   false,
-  _simCount: 5,
+  _products:   [],
+  _rules:      {},
+  _loaded:     false,
+  _simCount:   5,
+  _simTarget:  2000,
   _hiddenCost: 10,
+
+  // Risk prahy (% čistého zisku z ceny)
+  RISK_OK:    45,
+  RISK_WARN:  25,
 
   render() {
     return `
@@ -31,57 +36,79 @@ const commissionCalcView = {
       db.client.from('commission_rules').select('*').is('valid_to', null).order('created_at', { ascending: false }),
     ]);
 
-    this._products = (prods || []);
+    this._products = prods || [];
 
-    // Nastav pravidlá — ak existuje commission_rules, použi to, inak default z products
     this._rules = {};
     (prods || []).forEach(p => {
       const rule = (rules || []).find(r => r.product_id === p.id);
+      // Skrytý náklad per produkt: custom/project produkty majú vyšší
+      const defaultHidden = this._defaultHidden(p);
       this._rules[p.id] = {
-        ruleId:   rule?.id || null,
-        pct:      rule?.base_percent                  ?? p.commission_percent ?? 10,
-        bonus:    rule?.self_referral_bonus_percent    ?? p.referral_bonus_pct ?? 2,
-        maxPct:   rule?.max_percent                   ?? 30,
-        cap:      rule?.cap_eur                       ?? null,
-        hidden:   rule?.hidden_cost_factor            ?? this._hiddenCost,
+        ruleId:  rule?.id || null,
+        pct:     rule?.base_percent               ?? p.commission_percent ?? 10,
+        bonus:   rule?.self_referral_bonus_percent ?? p.referral_bonus_pct ?? 2,
+        maxPct:  rule?.max_percent                ?? 30,
+        cap:     rule?.cap_eur                    ?? null,
+        hidden:  rule?.hidden_cost_factor         ?? defaultHidden,
       };
     });
 
     this._loaded = true;
   },
 
-  // Limity podľa ceny produktu
+  _defaultHidden(p) {
+    const wf   = p.workflow_type || '';
+    const type = p.product_type  || '';
+    if (type === 'custom')                   return 20;
+    if (wf === 'project' || wf === 'projektovy') return 15;
+    if (type === 'entry')                    return 5;
+    return 10;
+  },
+
   _limits(price) {
-    if (price <= 199)  return { min: 5,  max: 20 };
-    if (price <= 599)  return { min: 8,  max: 25 };
-    if (price <= 999)  return { min: 10, max: 30 };
-    return              { min: 12, max: 35 };
+    if (price <= 199)  return { min:5,  max:20, safe:[12,18] };
+    if (price <= 599)  return { min:8,  max:25, safe:[15,22] };
+    if (price <= 999)  return { min:10, max:30, safe:[18,25] };
+    return                    { min:12, max:35, safe:[20,28] };
   },
 
   _calc(p) {
-    const r      = this._rules[p.id] || { pct:10, bonus:2, cap:null, hidden:10 };
-    const price  = p.base_price || p.price || 0;
-    const cost   = p.cost_price || 0;
-    const hidden = cost * (r.hidden / 100);
-    const realCost  = cost + hidden;
-    const margin    = price - realCost;
-    const comm      = Math.round(price * r.pct / 100);
-    const capped    = r.cap ? Math.min(comm, r.cap) : comm;
-    const net       = margin - capped;
-    const pctOfPrice = price > 0 ? Math.round(net / price * 100) : 0;
-    const risk = net < 0 ? 'red' : net < price * 0.15 ? 'amber' : 'green';
-    return { price, cost, hidden: Math.round(hidden), realCost: Math.round(realCost), margin: Math.round(margin), comm: capped, net: Math.round(net), pctOfPrice, risk };
+    const r       = this._rules[p.id] || { pct:10, bonus:2, cap:null, hidden:10 };
+    const price   = p.base_price || p.price || 0;
+    const cost    = p.cost_price || 0;
+    const hiddenE = Math.round(cost * (r.hidden / 100));
+    const realCost= cost + hiddenE;
+    const margin  = price - realCost;
+    const comm    = Math.round(price * r.pct / 100);
+    const capped  = r.cap ? Math.min(comm, r.cap) : comm;
+    const net     = margin - capped;
+    const pctOfPrice = price > 0 ? (net / price * 100) : 0;
+    const risk    = pctOfPrice >= this.RISK_OK   ? 'green'
+                  : pctOfPrice >= this.RISK_WARN  ? 'amber' : 'red';
+    // Koľko predajov na cieľ
+    const toTarget = capped > 0 ? Math.ceil(this._simTarget / capped) : '∞';
+    return {
+      price, cost, hiddenE, realCost: Math.round(realCost),
+      margin: Math.round(margin), comm: capped, net: Math.round(net),
+      pctOfPrice: Math.round(pctOfPrice * 10) / 10, risk, toTarget,
+    };
   },
 
-  _fmt(v) { return Math.round(v).toLocaleString('sk-SK') + ' €'; },
+  _fmt(v)    { return Math.round(v).toLocaleString('sk-SK') + ' €'; },
+  _fmtPct(v) { return (Math.round(v * 10) / 10) + '%'; },
 
   _riskBadge(risk) {
     const cfg = {
-      green: { bg:'rgba(62,207,142,0.12)', color:'var(--green)', label:'✓ OK' },
-      amber: { bg:'rgba(212,148,58,0.12)', color:'var(--acc)',   label:'⚠ Pozor' },
-      red:   { bg:'rgba(242,85,85,0.12)',  color:'var(--red)',   label:'✕ Riziko' },
+      green: { bg:'rgba(62,207,142,0.12)',  color:'var(--green)', label:'✓ OK'      },
+      amber: { bg:'rgba(212,148,58,0.12)',  color:'var(--acc)',   label:'⚠ Pozor'   },
+      red:   { bg:'rgba(242,85,85,0.12)',   color:'var(--red)',   label:'✕ Riziko'  },
     }[risk];
-    return `<span class="badge" style="background:${cfg.bg};color:${cfg.color};border:1px solid ${cfg.color}44;font-size:10px;">${cfg.label}</span>`;
+    return `<span class="badge" style="background:${cfg.bg};color:${cfg.color};border:1px solid ${cfg.color}44;font-size:10px;white-space:nowrap;">${cfg.label}</span>`;
+  },
+
+  _safeBand(price) {
+    const lim = this._limits(price);
+    return `<span style="font-size:10px;color:var(--green);">${lim.safe[0]}–${lim.safe[1]}%</span>`;
   },
 
   _renderCalc() {
@@ -91,153 +118,180 @@ const commissionCalcView = {
     const products = this._products;
     const subcats  = [...new Set(products.map(p => p.subcategory || 'Ostatné'))];
 
-    // Súhrny
-    const totMargin = products.reduce((a,p) => a + this._calc(p).margin, 0);
-    const totComm   = products.reduce((a,p) => a + this._calc(p).comm,   0);
-    const totNet    = products.reduce((a,p) => a + this._calc(p).net,     0);
-
-    // Simulácia obchodníka
-    const simProducts = products.filter(p => !['quick','ai_web'].includes(p.workflow_type) === false || true);
-    const avgComm = products.length > 0
-      ? Math.round(products.reduce((a,p) => a + this._calc(p).comm, 0) / products.length)
-      : 0;
-    const simEarning = this._simCount * avgComm;
+    const totMargin  = products.reduce((a,p) => a + this._calc(p).margin, 0);
+    const totComm    = products.reduce((a,p) => a + this._calc(p).comm,   0);
+    const totNet     = products.reduce((a,p) => a + this._calc(p).net,    0);
+    const avgComm    = products.length ? Math.round(totComm / products.length) : 0;
+    const avgPrice   = products.length ? Math.round(products.reduce((a,p) => a+(p.base_price||p.price||0),0) / products.length) : 0;
+    const needForTarget = avgComm > 0 ? Math.ceil(this._simTarget / avgComm) : '∞';
 
     el.innerHTML = `
       <!-- Globálne nastavenia -->
       <div class="card" style="margin-bottom:14px;">
-        <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+        <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;">
           <div style="display:flex;align-items:center;gap:10px;">
             <span style="font-size:13px;color:var(--muted);">Globálna provízia:</span>
-            <input type="range" min="0" max="35" step="1" value="10" id="global-slider" style="width:120px;"
+            <input type="range" min="0" max="35" step="1" value="10" id="global-slider" style="width:110px;"
               oninput="document.getElementById('global-val').textContent=this.value+'%'">
             <span id="global-val" style="font-size:14px;font-weight:700;min-width:36px;">10%</span>
             <button class="btn-ghost" style="font-size:12px;" onclick="commissionCalcView._applyGlobal()">Aplikovať</button>
           </div>
           <div style="display:flex;align-items:center;gap:10px;">
-            <span style="font-size:13px;color:var(--muted);">Skrytý náklad:</span>
+            <span style="font-size:13px;color:var(--muted);">Skrytý náklad (global):</span>
             <input type="range" min="0" max="40" step="5" value="${this._hiddenCost}" id="hidden-slider" style="width:100px;"
-              oninput="commissionCalcView._setHidden(+this.value); document.getElementById('hidden-val').textContent=this.value+'%'">
+              oninput="commissionCalcView._setHiddenGlobal(+this.value); document.getElementById('hidden-val').textContent=this.value+'%'">
             <span id="hidden-val" style="font-size:14px;font-weight:700;min-width:36px;">${this._hiddenCost}%</span>
+          </div>
+          <div style="margin-left:auto;font-size:11px;color:var(--muted);line-height:1.7;">
+            ✓ OK ≥ ${this.RISK_OK}% zisku z ceny &nbsp;|&nbsp;
+            ⚠ Pozor ${this.RISK_WARN}–${this.RISK_OK-1}% &nbsp;|&nbsp;
+            ✕ Riziko &lt; ${this.RISK_WARN}%
           </div>
         </div>
       </div>
 
-      <!-- KPI súhrn -->
-      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px;">
+      <!-- KPI -->
+      <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:16px;">
         <div class="card" style="text-align:center;">
-          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Celk. marža</div>
-          <div class="mono" style="font-size:18px;font-weight:700;color:var(--green);" id="tot-margin">${this._fmt(totMargin)}</div>
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Reálna marža</div>
+          <div class="mono" style="font-size:17px;font-weight:700;color:var(--green);" id="tot-margin">${this._fmt(totMargin)}</div>
           <div style="font-size:11px;color:var(--muted);">po skrytých nákladoch</div>
         </div>
         <div class="card" style="text-align:center;">
           <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Celk. provízie</div>
-          <div class="mono" style="font-size:18px;font-weight:700;color:var(--acc);" id="tot-comm">${this._fmt(totComm)}</div>
+          <div class="mono" style="font-size:17px;font-weight:700;color:var(--acc);" id="tot-comm">${this._fmt(totComm)}</div>
           <div style="font-size:11px;color:var(--muted);">ak predaný každý 1×</div>
         </div>
         <div class="card" style="text-align:center;">
-          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Ostáva tebe</div>
-          <div class="mono" style="font-size:18px;font-weight:700;color:var(--green);" id="tot-net">${this._fmt(totNet)}</div>
-          <div style="font-size:11px;color:var(--muted);">čistý zisk</div>
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Čistý zisk</div>
+          <div class="mono" style="font-size:17px;font-weight:700;color:var(--green);" id="tot-net">${this._fmt(totNet)}</div>
+        </div>
+        <div class="card" style="text-align:center;">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Priem. provízia</div>
+          <div class="mono" style="font-size:17px;font-weight:700;color:var(--acc);" id="avg-comm">${this._fmt(avgComm)}</div>
+          <div style="font-size:11px;color:var(--muted);">priem. cena ${this._fmt(avgPrice)}</div>
         </div>
         <div class="card" style="text-align:center;background:linear-gradient(135deg,#1a180e,var(--card));border-color:var(--acc-brd);">
-          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Priemer/obchod</div>
-          <div class="mono" style="font-size:18px;font-weight:700;color:var(--acc);" id="avg-comm">${this._fmt(avgComm)}</div>
-          <div style="font-size:11px;color:var(--muted);">priemerná provízia</div>
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Na cieľ ${this._fmt(this._simTarget)}</div>
+          <div class="mono" style="font-size:17px;font-weight:700;color:var(--acc);" id="need-count">${needForTarget} obchodov</div>
+          <div style="font-size:11px;color:var(--muted);">pri priem. provízii</div>
         </div>
       </div>
 
-      <!-- Simulácia príjmu obchodníka -->
+      <!-- Simulácia -->
       <div class="card" style="margin-bottom:16px;border-color:var(--acc-brd);">
         <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px;">
           Simulácia príjmu obchodníka
         </div>
-        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:12px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:13px;color:var(--muted);">Cieľový príjem/mes:</span>
+            <select id="target-select" onchange="commissionCalcView._setTarget(+this.value)"
+              style="font-size:13px;width:auto;">
+              ${[1000,1500,2000,2500,3000,4000,5000].map(t =>
+                `<option value="${t}"${this._simTarget===t?' selected':''}>${this._fmt(t)}</option>`
+              ).join('')}
+            </select>
+          </div>
           <div style="display:flex;align-items:center;gap:10px;">
             <span style="font-size:13px;color:var(--muted);">Obchodov/mesiac:</span>
-            <input type="range" min="1" max="20" step="1" value="${this._simCount}" id="sim-slider" style="width:120px;"
+            <input type="range" min="1" max="20" step="1" value="${this._simCount}" id="sim-slider" style="width:110px;"
               oninput="commissionCalcView._setSim(+this.value)">
             <span id="sim-count" style="font-size:14px;font-weight:700;">${this._simCount}</span>
           </div>
-          <div style="display:flex;gap:20px;flex-wrap:wrap;">
-            ${[3,5,8,10,15].map(n => {
-              const earn = n * avgComm;
-              return `<div style="text-align:center;">
-                <div style="font-size:11px;color:var(--muted);">${n} obchodov</div>
-                <div class="mono" style="font-size:15px;font-weight:700;color:${earn>2000?'var(--green)':earn>1000?'var(--acc)':'var(--muted)'};">${this._fmt(earn)}</div>
-              </div>`;
-            }).join('')}
-          </div>
           <div style="margin-left:auto;text-align:right;">
-            <div style="font-size:11px;color:var(--muted);">Aktuálny výber</div>
-            <div class="mono" style="font-size:22px;font-weight:700;color:var(--acc);" id="sim-result">${this._fmt(simEarning)}</div>
+            <div style="font-size:11px;color:var(--muted);">Mesačný príjem obchodníka</div>
+            <div class="mono" style="font-size:24px;font-weight:700;color:var(--acc);" id="sim-result">${this._fmt(this._simCount * avgComm)}</div>
           </div>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;">
+          ${[3,5,8,10,15].map(n => {
+            const earn = n * avgComm;
+            const color = earn >= this._simTarget ? 'var(--green)' : earn >= this._simTarget*0.6 ? 'var(--acc)' : 'var(--muted)';
+            return `<div style="background:var(--inp);border:1px solid var(--brd);border-radius:8px;padding:8px 12px;text-align:center;min-width:80px;">
+              <div style="font-size:11px;color:var(--muted);">${n} obchodov</div>
+              <div class="mono" style="font-size:14px;font-weight:700;color:${color};">${this._fmt(earn)}</div>
+              ${earn >= this._simTarget ? '<div style="font-size:10px;color:var(--green);">✓ cieľ</div>' : ''}
+            </div>`;
+          }).join('')}
         </div>
       </div>
 
-      <!-- Tabuľky -->
+      <!-- Tabuľky produktov -->
       ${subcats.map(sub => this._renderSubcatTable(sub)).join('')}
 
-      <div style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.6;padding:12px;background:var(--surf);border-radius:8px;border:1px solid var(--brd);">
-        <strong>Vzorec:</strong> Čistý zisk = Cena − Náklad − Skrytý náklad (${this._hiddenCost}%) − Provízia<br>
-        <strong>Skrytý náklad</strong> = čas, support, revízie, opravy. Nastaviteľný globálne.<br>
-        <strong>Bonus ref.</strong> = extra % ak obchodník = referrer daného člena.<br>
-        Po nastavení klikni <strong>Uložiť pravidlá</strong> — uloží sa do <code>commission_rules</code> tabuľky s dátumom platnosti.
+      <!-- Legenda -->
+      <div style="font-size:12px;color:var(--muted);margin-top:8px;padding:12px;background:var(--surf);border-radius:8px;border:1px solid var(--brd);line-height:1.8;">
+        <strong>Vzorec:</strong> Čistý zisk = Cena − Náklad − Skrytý náklad − Provízia &nbsp;|&nbsp;
+        <strong>Skrytý náklad</strong> sa nastavuje per produkt (custom=20%, projekt=15%, quick=10%, entry=5%) &nbsp;|&nbsp;
+        <strong>Bezpečné pásmo</strong> = odporúčaný rozsah provízií pre daný cenový segment &nbsp;|&nbsp;
+        <strong>Na cieľ</strong> = počet predajov tohto produktu na dosiahnutie cieľového príjmu obchodníka
       </div>`;
   },
 
   _renderSubcatTable(sub) {
-    const items = this._products.filter(p => (p.subcategory || 'Ostatné') === sub);
+    const items = this._products.filter(p => (p.subcategory||'Ostatné') === sub);
     if (!items.length) return '';
 
     const rows = items.map(p => {
-      const r     = this._rules[p.id];
-      const c     = this._calc(p);
-      const lim   = this._limits(c.price);
+      const r   = this._rules[p.id];
+      const c   = this._calc(p);
+      const lim = this._limits(c.price);
       const netColor = { green:'var(--green)', amber:'var(--acc)', red:'var(--red)' }[c.risk];
-      const wf    = p.workflow_type;
-      const isQ   = wf === 'quick' || wf === 'ai_web';
+      const wf  = p.workflow_type || '';
+      const isQ = wf === 'quick' || wf === 'ai_web';
+      const inSafe = r.pct >= lim.safe[0] && r.pct <= lim.safe[1];
 
       return `<tr style="border-bottom:1px solid var(--brd);">
         <td style="padding:8px;">
           <div style="font-weight:600;font-size:13px;">${esc(p.name)}</div>
-          <div style="display:flex;gap:5px;margin-top:3px;">
+          <div style="display:flex;gap:5px;margin-top:3px;flex-wrap:wrap;">
             <span class="badge" style="font-size:10px;background:${isQ?'rgba(62,207,142,0.12)':'rgba(91,164,245,0.12)'};color:${isQ?'var(--green)':'var(--blue)'};border:1px solid ${isQ?'rgba(62,207,142,0.25)':'rgba(91,164,245,0.25)'};">${isQ?'⚡ rýchly':'🏗 projekt'}</span>
-            ${p.product_code ? `<span class="mono" style="font-size:10px;color:var(--muted);">${esc(p.product_code)}</span>` : ''}
+            ${p.product_code?`<span class="mono" style="font-size:10px;color:var(--muted);">${esc(p.product_code)}</span>`:''}
           </div>
         </td>
-        <td style="padding:8px;text-align:right;" class="mono">${this._fmt(c.price)}</td>
-        <td style="padding:8px;text-align:right;color:var(--muted);" class="mono">${this._fmt(c.cost)}</td>
-        <td style="padding:8px;text-align:right;color:var(--muted);font-size:11px;" class="mono">+${this._fmt(c.hidden)}</td>
-        <td style="padding:8px;text-align:right;" class="mono">${this._fmt(c.margin)}</td>
-        <td style="padding:8px;min-width:160px;">
+        <td style="padding:8px;text-align:right;font-size:12px;" class="mono">${this._fmt(c.price)}</td>
+        <td style="padding:8px;text-align:right;font-size:12px;color:var(--muted);" class="mono">${this._fmt(c.cost)}</td>
+        <td style="padding:8px;text-align:right;font-size:12px;color:var(--muted);" class="mono" id="hidden-e-${p.id}">+${this._fmt(c.hiddenE)}</td>
+        <td style="padding:8px;text-align:right;font-size:12px;" class="mono" id="margin-${p.id}">${this._fmt(c.margin)}</td>
+        <td style="padding:8px;min-width:180px;">
           <div style="display:flex;align-items:center;gap:6px;">
-            <input type="range" min="${lim.min}" max="${lim.max}" step="1" value="${Math.min(Math.max(r.pct, lim.min), lim.max)}"
-              style="width:80px;"
-              oninput="commissionCalcView._setPct('${p.id}',+this.value); document.getElementById('pct-${p.id}').textContent=this.value+'%'">
-            <span id="pct-${p.id}" style="min-width:34px;font-size:13px;font-weight:700;">${r.pct}%</span>
-            <span style="font-size:10px;color:var(--muted);">${lim.min}–${lim.max}%</span>
+            <input type="range" min="${lim.min}" max="${lim.max}" step="1"
+              value="${Math.min(Math.max(r.pct,lim.min),lim.max)}"
+              style="width:75px;"
+              oninput="commissionCalcView._setPct('${p.id}',+this.value); document.getElementById('pct-lbl-${p.id}').textContent=this.value+'%'">
+            <span id="pct-lbl-${p.id}" style="min-width:30px;font-size:13px;font-weight:700;color:${inSafe?'var(--green)':'var(--acc)'};">${r.pct}%</span>
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;">
+            limit ${lim.min}–${lim.max}% &nbsp;|&nbsp; <span style="color:var(--green);">✓ ${lim.safe[0]}–${lim.safe[1]}%</span>
           </div>
         </td>
-        <td style="padding:8px;text-align:right;color:var(--acc);font-weight:600;" class="mono" id="comm-${p.id}">${this._fmt(c.comm)}</td>
-        <td style="padding:8px;min-width:110px;">
-          <div style="display:flex;align-items:center;gap:6px;">
-            <input type="range" min="0" max="10" step="1" value="${r.bonus||0}"
-              style="width:60px;"
-              oninput="commissionCalcView._setBonus('${p.id}',+this.value); document.getElementById('bonus-${p.id}').textContent='+'+this.value+'%'">
-            <span id="bonus-${p.id}" style="min-width:34px;font-size:13px;">+${r.bonus||0}%</span>
+        <td style="padding:8px;text-align:right;font-size:13px;color:var(--acc);font-weight:700;" class="mono" id="comm-e-${p.id}">${this._fmt(c.comm)}</td>
+        <td style="padding:8px;min-width:90px;">
+          <div style="display:flex;align-items:center;gap:4px;">
+            <input type="range" min="0" max="10" step="1" value="${r.bonus||0}" style="width:55px;"
+              oninput="commissionCalcView._setBonus('${p.id}',+this.value); document.getElementById('bonus-lbl-${p.id}').textContent='+'+this.value+'%'">
+            <span id="bonus-lbl-${p.id}" style="font-size:12px;">+${r.bonus||0}%</span>
           </div>
         </td>
-        <td style="padding:8px;text-align:right;font-size:14px;font-weight:700;color:${netColor};" id="net-${p.id}">${this._fmt(c.net)}</td>
-        <td style="padding:8px;text-align:right;font-size:12px;color:var(--muted);" id="pct-price-${p.id}">${c.pctOfPrice}%</td>
+        <td style="padding:8px;min-width:90px;">
+          <div style="display:flex;align-items:center;gap:4px;">
+            <input type="range" min="0" max="40" step="5" value="${r.hidden||10}" style="width:55px;"
+              oninput="commissionCalcView._setHiddenProduct('${p.id}',+this.value); document.getElementById('hidden-lbl-${p.id}').textContent=this.value+'%'">
+            <span id="hidden-lbl-${p.id}" style="font-size:12px;">${r.hidden||10}%</span>
+          </div>
+        </td>
+        <td style="padding:8px;text-align:right;font-size:14px;font-weight:700;color:${netColor};" class="mono" id="net-${p.id}">${this._fmt(c.net)}</td>
+        <td style="padding:8px;text-align:right;font-size:12px;" id="pct-price-${p.id}">${this._fmtPct(c.pctOfPrice)}</td>
         <td style="padding:8px;" id="risk-${p.id}">${this._riskBadge(c.risk)}</td>
+        <td style="padding:8px;text-align:right;font-size:12px;color:var(--muted);" id="to-target-${p.id}">${c.toTarget}×</td>
       </tr>`;
     }).join('');
 
     return `
       <div style="margin-bottom:20px;">
-        <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;
-          margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--brd);">${esc(sub)}</div>
+        <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;
+          letter-spacing:0.08em;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--brd);">${esc(sub)}</div>
         <div style="overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead>
@@ -247,12 +301,14 @@ const commissionCalcView = {
                 <th style="text-align:right;padding:6px 8px;font-size:11px;color:var(--muted);font-weight:600;">Náklad</th>
                 <th style="text-align:right;padding:6px 8px;font-size:11px;color:var(--muted);font-weight:600;">Skrytý</th>
                 <th style="text-align:right;padding:6px 8px;font-size:11px;color:var(--muted);font-weight:600;">Reál. marža</th>
-                <th style="padding:6px 8px;font-size:11px;color:var(--muted);font-weight:600;">Provízia % <span style="font-weight:400;">(limit)</span></th>
-                <th style="text-align:right;padding:6px 8px;font-size:11px;color:var(--muted);font-weight:600;">Provízia €</th>
+                <th style="padding:6px 8px;font-size:11px;color:var(--muted);font-weight:600;">Provízia % <span style="color:var(--green);">✓ bezpečné</span></th>
+                <th style="text-align:right;padding:6px 8px;font-size:11px;color:var(--muted);font-weight:600;">Prov. €</th>
                 <th style="padding:6px 8px;font-size:11px;color:var(--muted);font-weight:600;">Bonus ref.</th>
+                <th style="padding:6px 8px;font-size:11px;color:var(--muted);font-weight:600;">Skrytý %</th>
                 <th style="text-align:right;padding:6px 8px;font-size:11px;color:var(--muted);font-weight:600;">Čistý zisk</th>
-                <th style="text-align:right;padding:6px 8px;font-size:11px;color:var(--muted);font-weight:600;">% z ceny</th>
+                <th style="text-align:right;padding:6px 8px;font-size:11px;color:var(--muted);font-weight:600;">% ceny</th>
                 <th style="padding:6px 8px;font-size:11px;color:var(--muted);font-weight:600;">Risk</th>
+                <th style="text-align:right;padding:6px 8px;font-size:11px;color:var(--muted);font-weight:600;">Na cieľ</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -261,6 +317,7 @@ const commissionCalcView = {
       </div>`;
   },
 
+  // ── Settery ──────────────────────────────────────────────────────────────
   _setPct(id, val) {
     if (this._rules[id]) this._rules[id].pct = val;
     this._updateRow(id);
@@ -269,16 +326,30 @@ const commissionCalcView = {
     if (this._rules[id]) this._rules[id].bonus = val;
     this._updateRow(id);
   },
-  _setHidden(val) {
+  _setHiddenProduct(id, val) {
+    if (this._rules[id]) this._rules[id].hidden = val;
+    this._updateRow(id);
+  },
+  _setHiddenGlobal(val) {
     this._hiddenCost = val;
-    Object.keys(this._rules).forEach(id => { this._rules[id].hidden = val; });
+    // Nastav len produktom ktoré nemajú custom override
+    this._products.forEach(p => {
+      const def = this._defaultHidden(p);
+      if (this._rules[p.id] && this._rules[p.id].hidden === def) {
+        this._rules[p.id].hidden = val;
+      }
+    });
     this._updateAll();
+  },
+  _setTarget(val) {
+    this._simTarget = val;
+    this._updateTotals();
+    this._updateAllToTarget();
   },
   _setSim(n) {
     this._simCount = n;
-    const avgComm = this._products.length > 0
-      ? Math.round(this._products.reduce((a,p) => a + this._calc(p).comm, 0) / this._products.length)
-      : 0;
+    const avgComm = this._products.length
+      ? Math.round(this._products.reduce((a,p) => a+this._calc(p).comm, 0) / this._products.length) : 0;
     const el = document.getElementById('sim-count');
     const re = document.getElementById('sim-result');
     if (el) el.textContent = n;
@@ -293,76 +364,83 @@ const commissionCalcView = {
     });
     this._renderCalc();
   },
+
+  // ── Update helpers ────────────────────────────────────────────────────────
   _updateRow(id) {
     const p = this._products.find(x => x.id === id);
     if (!p) return;
-    const c = this._calc(p);
+    const c   = this._calc(p);
+    const lim = this._limits(c.price);
+    const r   = this._rules[id];
     const netColor = { green:'var(--green)', amber:'var(--acc)', red:'var(--red)' }[c.risk];
-    const setEl = (eid, val, style) => {
-      const el = document.getElementById(eid);
-      if (!el) return;
-      el.textContent = val;
-      if (style) Object.assign(el.style, style);
-    };
-    setEl('comm-'+id,      this._fmt(c.comm));
-    setEl('net-'+id,       this._fmt(c.net),   { color: netColor });
-    setEl('pct-price-'+id, c.pctOfPrice + '%');
+    const inSafe   = r.pct >= lim.safe[0] && r.pct <= lim.safe[1];
+    const s = (eid, val, style) => { const el=document.getElementById(eid); if(el){el.textContent=val; if(style) Object.assign(el.style,style);} };
+    s('hidden-e-'+id,  '+'+this._fmt(c.hiddenE));
+    s('margin-'+id,    this._fmt(c.margin));
+    s('comm-e-'+id,    this._fmt(c.comm));
+    s('net-'+id,       this._fmt(c.net), { color: netColor });
+    s('pct-price-'+id, this._fmtPct(c.pctOfPrice));
+    s('to-target-'+id, c.toTarget + '×');
+    s('pct-lbl-'+id,   r.pct + '%', { color: inSafe ? 'var(--green)' : 'var(--acc)' });
     const riskEl = document.getElementById('risk-'+id);
     if (riskEl) riskEl.innerHTML = this._riskBadge(c.risk);
     this._updateTotals();
   },
-  _updateAll() {
-    this._products.forEach(p => this._updateRow(p.id));
-  },
+  _updateAll() { this._products.forEach(p => this._updateRow(p.id)); },
+  _updateAllToTarget() { this._products.forEach(p => {
+    const c = this._calc(p);
+    const el = document.getElementById('to-target-'+p.id);
+    if (el) el.textContent = c.toTarget + '×';
+  }); },
   _updateTotals() {
-    const totMargin = this._products.reduce((a,p) => a + this._calc(p).margin, 0);
-    const totComm   = this._products.reduce((a,p) => a + this._calc(p).comm,   0);
-    const totNet    = this._products.reduce((a,p) => a + this._calc(p).net,     0);
-    const avgComm   = this._products.length > 0 ? Math.round(totComm / this._products.length) : 0;
-    const setT = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-    setT('tot-margin', this._fmt(totMargin));
-    setT('tot-comm',   this._fmt(totComm));
-    setT('tot-net',    this._fmt(totNet));
-    setT('avg-comm',   this._fmt(avgComm));
-    setT('sim-result', this._fmt(this._simCount * avgComm));
+    const totMargin = this._products.reduce((a,p) => a+this._calc(p).margin, 0);
+    const totComm   = this._products.reduce((a,p) => a+this._calc(p).comm,   0);
+    const totNet    = this._products.reduce((a,p) => a+this._calc(p).net,    0);
+    const avgComm   = this._products.length ? Math.round(totComm/this._products.length) : 0;
+    const needForTarget = avgComm > 0 ? Math.ceil(this._simTarget / avgComm) : '∞';
+    const s = (id,val) => { const el=document.getElementById(id); if(el) el.textContent=val; };
+    s('tot-margin',  this._fmt(totMargin));
+    s('tot-comm',    this._fmt(totComm));
+    s('tot-net',     this._fmt(totNet));
+    s('avg-comm',    this._fmt(avgComm));
+    s('need-count',  needForTarget + ' obchodov');
+    s('sim-result',  this._fmt(this._simCount * avgComm));
+    // Refresh simulačné boxy
+    const boxes = document.querySelectorAll('[id^="sim-box-"]');
+    // (boxes sa re-renderujú len pri _renderCalc)
   },
 
+  // ── Uloženie ──────────────────────────────────────────────────────────────
   async saveRules() {
     const btn = document.getElementById('save-rules-btn');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Ukladám...'; }
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Date().toISOString().slice(0,10);
+    const uid   = (await db.client.auth.getUser()).data.user?.id;
     let saved = 0, errors = 0;
 
     for (const p of this._products) {
       const r = this._rules[p.id];
       if (!r) continue;
       try {
-        // Uzavri starý záznam
         if (r.ruleId) {
           await db.client.from('commission_rules')
-            .update({ valid_to: today })
-            .eq('id', r.ruleId)
-            .is('valid_to', null);
+            .update({ valid_to: today }).eq('id', r.ruleId).is('valid_to', null);
         }
-        // Vlož nový
         const { data, error } = await db.client.from('commission_rules').insert({
           product_id:                  p.id,
           base_percent:                r.pct,
           self_referral_bonus_percent: r.bonus || 0,
-          max_percent:                 this._limits(p.base_price || p.price || 0).max,
+          max_percent:                 this._limits(p.base_price||p.price||0).max,
           hidden_cost_factor:          r.hidden || this._hiddenCost,
           valid_from:                  today,
-          created_by:                  (await db.client.auth.getUser()).data.user?.id,
+          created_by:                  uid,
         }).select().single();
         if (error) throw error;
-
-        // Ulož aj default do products
         await db.client.from('products').update({
           commission_percent: r.pct,
           referral_bonus_pct: r.bonus || 0,
         }).eq('id', p.id);
-
         r.ruleId = data.id;
         saved++;
       } catch(e) { console.error(e); errors++; }
@@ -370,7 +448,7 @@ const commissionCalcView = {
 
     if (btn) {
       btn.disabled = false;
-      btn.textContent = errors > 0 ? `⚠️ ${saved}/${this._products.length} uložených` : `✓ Uložené (${saved})`;
+      btn.textContent = errors > 0 ? `⚠️ ${saved}/${this._products.length}` : `✓ Uložené (${saved})`;
       setTimeout(() => { btn.textContent = '💾 Uložiť pravidlá'; }, 3000);
     }
   },
