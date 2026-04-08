@@ -119,8 +119,8 @@ nav { padding: 10px 0; flex: 1; }
   font-size: 11px; color: var(--muted);
 }
 
-#content { flex: 1; overflow-y: auto; padding: 24px 28px; max-width: 960px; }
-#content.wide { max-width: 100%; }
+#content { flex: 1; overflow-y: auto; padding: 24px 28px; }
+
 
 /* ââ View header ââ */
 .view-head {
