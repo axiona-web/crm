@@ -28,12 +28,12 @@ body {
   overflow: hidden;
 }
 
-/* ── Scrollbar ── */
+/* ââ Scrollbar ââ */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--brd); border-radius: 2px; }
 
-/* ── Inputs ── */
+/* ââ Inputs ââ */
 input, select, textarea {
   background: var(--inp);
   border: 1px solid var(--brd);
@@ -49,7 +49,7 @@ input, select, textarea {
 input:focus, select:focus, textarea:focus { border-color: var(--acc-brd); }
 select option { background: #1a1a2e; }
 
-/* ── Buttons ── */
+/* ââ Buttons ââ */
 button { cursor: pointer; font-family: inherit; }
 .btn-primary {
   background: var(--acc); color: #0b0b15; border: none;
@@ -72,7 +72,7 @@ button { cursor: pointer; font-family: inherit; }
   padding: 8px 14px; font-size: 13px;
 }
 
-/* ── Cards ── */
+/* ââ Cards ââ */
 .card {
   background: var(--card);
   border: 1px solid var(--brd);
@@ -85,7 +85,7 @@ button { cursor: pointer; font-family: inherit; }
 }
 .mono { font-family: 'JetBrains Mono', monospace; }
 
-/* ── Layout ── */
+/* ââ Layout ââ */
 #app { display: flex; height: 100vh; }
 
 #sidebar {
@@ -120,15 +120,16 @@ nav { padding: 10px 0; flex: 1; }
 }
 
 #content { flex: 1; overflow-y: auto; padding: 24px 28px; max-width: 960px; }
+#content.wide { max-width: 100%; }
 
-/* ── View header ── */
+/* ââ View header ââ */
 .view-head {
   display: flex; justify-content: space-between;
   align-items: center; margin-bottom: 18px;
 }
 h2 { font-size: 19px; font-weight: 700; }
 
-/* ── Modal ── */
+/* ââ Modal ââ */
 .overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.72);
   z-index: 1000; display: none; align-items: center;
@@ -153,7 +154,7 @@ h2 { font-size: 19px; font-weight: 700; }
 .form-actions { display: flex; gap: 8px; margin-top: 14px; align-items: center; }
 .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
-/* ── Stats ── */
+/* ââ Stats ââ */
 .stat-grid { display: flex; gap: 11px; margin-bottom: 18px; flex-wrap: wrap; }
 .stat-card { flex: 1; min-width: 140px; }
 .stat-label {
@@ -163,7 +164,7 @@ h2 { font-size: 19px; font-weight: 700; }
 .stat-value { font-size: 22px; font-weight: 700; }
 .stat-sub { font-size: 11px; color: var(--muted); margin-top: 3px; }
 
-/* ── Dashboard grid ── */
+/* ââ Dashboard grid ââ */
 .dash-grid {
   display: grid; grid-template-columns: 1fr 1fr;
   gap: 12px; margin-bottom: 14px;
@@ -173,10 +174,10 @@ h2 { font-size: 19px; font-weight: 700; }
 .bar-track { height: 4px; background: var(--brd); border-radius: 2px; }
 .bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s; }
 
-/* ── List ── */
+/* ââ List ââ */
 .list { display: grid; gap: 9px; }
 
-/* ── Search / filters ── */
+/* ââ Search / filters ââ */
 .search-bar { display: flex; gap: 9px; margin-bottom: 16px; flex-wrap: wrap; }
 .filter-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
 .filter-tab {
@@ -186,7 +187,7 @@ h2 { font-size: 19px; font-weight: 700; }
 }
 .filter-tab.active { color: var(--acc); border-color: var(--acc-brd); background: var(--acc-dim); }
 
-/* ── Pipeline ── */
+/* ââ Pipeline ââ */
 .stage-filters {
   display: flex; gap: 7px; margin-bottom: 16px;
   overflow-x: auto; padding-bottom: 4px;
@@ -209,10 +210,10 @@ h2 { font-size: 19px; font-weight: 700; }
   align-items: flex-start; gap: 12px;
 }
 
-/* ── Commissions ── */
+/* ââ Commissions ââ */
 .comm-stats { display: flex; gap: 11px; margin-bottom: 18px; flex-wrap: wrap; }
 
-/* ── AI ── */
+/* ââ AI ââ */
 #ai-wrap { display: flex; flex-direction: column; height: calc(100vh - 90px); }
 #chat-msgs {
   flex: 1; overflow-y: auto; display: flex;
@@ -241,7 +242,7 @@ h2 { font-size: 19px; font-weight: 700; }
 }
 .suggestion-btn:hover { color: var(--txt); }
 
-/* ── API Key setup ── */
+/* ââ API Key setup ââ */
 #api-setup {
   display: none; position: fixed; inset: 0;
   background: var(--bg); z-index: 2000;
@@ -255,7 +256,7 @@ h2 { font-size: 19px; font-weight: 700; }
 .setup-box h2 { margin-bottom: 8px; }
 .setup-box p { color: var(--muted); font-size: 13px; line-height: 1.6; margin-bottom: 20px; }
 
-/* ── Responsive ── */
+/* ââ Responsive ââ */
 @media (max-width: 600px) {
   #sidebar { width: 52px; }
   .nav-btn span:last-child { display: none; }
@@ -264,7 +265,7 @@ h2 { font-size: 19px; font-weight: 700; }
   .dash-grid { grid-template-columns: 1fr; }
 }
 
-/* ── Dashboard KPI ── */
+/* ââ Dashboard KPI ââ */
 .kpi-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -283,7 +284,7 @@ h2 { font-size: 19px; font-weight: 700; }
 .kpi-med   { font-size: 20px; font-weight: 700; line-height: 1; margin-bottom: 5px; }
 .kpi-sub   { font-size: 12px; color: var(--muted); }
 
-/* ── Charts ── */
+/* ââ Charts ââ */
 .charts-row { display: flex; gap: 12px; margin-bottom: 14px; }
 .chart-title { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 14px; }
 
