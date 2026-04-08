@@ -160,6 +160,3 @@ const clenDashboardView = {
   },
 };
 
-// Helper pre EUR v clen_dashboard
-function EUR(n) { return Math.round(n||0).toLocaleString('sk-SK') + ' €'; }
-function FMT(d) { return d ? new Date(d).toLocaleDateString('sk-SK') : '—'; }
