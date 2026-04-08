@@ -7,6 +7,7 @@ const VIEWS = {
   orders:         ordersView,
   commissions:    commissionsView,
   products:       productsView,
+  calc:           commissionCalcView,
   ai:             aiView,
   partners:       partnersView,
   profile:        profileView,
