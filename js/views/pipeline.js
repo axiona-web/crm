@@ -122,19 +122,20 @@ const pipelineView = {
           ).join('')}
         </select>
       </div>
+      <div class="form-row"><label class="form-label">Produkt</label>
+        <select id="df-product" onchange="pipelineView._onProductChange(this.value)">
+          <option value="">— vybrať produkt —</option>
+          ${(app.state.products||[]).filter(p=>p.active||p.is_active).map(p=>
+            `<option value="${p.id}"${d.productId===p.id?' selected':''}>${esc(p.name)} — ${EUR(p.base_price||p.price||0)}</option>`
+          ).join('')}
+        </select>
+      </div>
+      <div id="df-product-info" style="display:none;margin-top:-8px;margin-bottom:12px;"></div>
       <div class="form-grid-2">
         <div class="form-row"><label class="form-label">Hodnota (€)</label>
           <input id="df-value" type="number" value="${d.value||''}" /></div>
         <div class="form-row"><label class="form-label">Plánované uzatvorenie</label>
           <input id="df-close" type="date" value="${d.expectedClose||''}" /></div>
-      </div>
-      <div class="form-row"><label class="form-label">Produkt</label>
-        <select id="df-product">
-          <option value="">— vybrať produkt —</option>
-          ${(app.state.products||[]).filter(p=>p.active).map(p=>
-            `<option value="${p.id}"${d.productId===p.id?' selected':''}>${esc(p.name)} — ${EUR(p.price)}</option>`
-          ).join('')}
-        </select>
       </div>
       <div class="form-row"><label class="form-label">Zdroj</label>
         <input id="df-source" value="${esc(d.source||'')}" placeholder="napr. referral, web, event" /></div>
@@ -155,8 +156,38 @@ const pipelineView = {
         </div>` : ''}`;
   },
 
+  _onProductChange(productId) {
+    if (!productId) return;
+    const p = (app.state.products||[]).find(x => x.id === productId);
+    if (!p) return;
+    const valEl   = document.getElementById('df-value');
+    const descEl  = document.getElementById('df-desc');
+    const titleEl = document.getElementById('df-title');
+    const infoEl  = document.getElementById('df-product-info');
+    if (valEl   && !valEl.value)   valEl.value   = p.base_price || p.price || '';
+    if (descEl  && !descEl.value)  descEl.value  = p.description || '';
+    if (titleEl && !titleEl.value) titleEl.value = p.name;
+    if (infoEl) {
+      infoEl.style.display = '';
+      infoEl.innerHTML = `
+        <div style="background:var(--inp);border:1px solid var(--brd);border-radius:8px;padding:10px 12px;font-size:12px;margin-top:6px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+            <span style="color:var(--muted);">${esc(p.category||'')} › ${esc(p.subcategory||'')}</span>
+            <span class="mono" style="color:var(--acc);font-weight:700;">${EUR(p.base_price||p.price||0)}</span>
+          </div>
+          ${p.description?`<div style="color:var(--muted);">${esc(p.description)}</div>`:''}
+        </div>`;
+    }
+  },
+
   openAdd()    { modal.open('Nový lead', this._form({ title:'', status:'new', value:'', contactId:'', source:'', description:'', notes:'' }, true)); },
-  openEdit(id) { const d = app.state.deals.find(x => x.id === id); if(d) modal.open('Upraviť lead', this._form(d, false)); },
+  openEdit(id) {
+    const d = app.state.deals.find(x => x.id === id);
+    if (d) {
+      modal.open('Upraviť lead', this._form(d, false));
+      if (d.productId) setTimeout(() => this._onProductChange(d.productId), 50);
+    }
+  },
 
   async moveBack(id) {
     const d   = app.state.deals.find(x => x.id === id); if(!d) return;
