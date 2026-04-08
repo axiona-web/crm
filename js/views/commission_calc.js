@@ -81,11 +81,25 @@ const commissionCalcView = {
       pctOfPrice: Math.round(pctOfPrice * 10) / 10, risk, toTarget };
   },
 
-  // Priemerná provízia len z produktov s cenou > 0
+  // Priemerná provízia len z produktov kde je pct > 0 a cena > 0
   _avgComm() {
-    const valid = this._products.filter(p => (p.base_price || p.price || 0) > 0);
+    const valid = this._products.filter(p => {
+      const r = this._rules[p.id];
+      return (p.base_price || p.price || 0) > 0 && r && r.pct > 0;
+    });
     if (!valid.length) return 0;
     return Math.round(valid.reduce((a, p) => a + this._calc(p).comm, 0) / valid.length);
+  },
+
+  // Simulácia: príjem ak predám simCount obchodov z náhodného mixu aktívnych produktov
+  _simEarning() {
+    const valid = this._products.filter(p => {
+      const r = this._rules[p.id];
+      return (p.base_price || p.price || 0) > 0 && r && r.pct > 0;
+    });
+    if (!valid.length) return 0;
+    const avg = Math.round(valid.reduce((a,p) => a + this._calc(p).comm, 0) / valid.length);
+    return avg * this._simCount;
   },
 
   _fmt(v)    { return Math.round(v).toLocaleString('sk-SK') + ' €'; },
@@ -182,12 +196,12 @@ const commissionCalcView = {
           </div>
           <div style="margin-left:auto;text-align:right;">
             <div style="font-size:11px;color:var(--muted);">Mesačný príjem (priem. produkt)</div>
-            <div class="mono" style="font-size:24px;font-weight:700;color:var(--acc);" id="sim-result">${this._fmt(this._simCount * avgComm)}</div>
+            <div class="mono" style="font-size:24px;font-weight:700;color:var(--acc);" id="sim-result">${this._fmt(this._simEarning())}</div>
           </div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
           ${[3,5,8,10,15].map(n => {
-            const earn  = n * avgComm;
+            const earn  = n * this._avgComm();
             const color = earn >= this._simTarget ? 'var(--green)' : earn >= this._simTarget*0.6 ? 'var(--acc)' : 'var(--muted)';
             return `<div style="background:var(--inp);border:1px solid var(--brd);border-radius:8px;padding:8px 14px;text-align:center;min-width:90px;">
               <div style="font-size:11px;color:var(--muted);">${n} obchodov</div>
@@ -330,11 +344,10 @@ const commissionCalcView = {
   },
   _setSim(n) {
     this._simCount = n;
-    const avgComm = this._avgComm();
     const el = document.getElementById('sim-count');
     const re = document.getElementById('sim-result');
     if (el) el.textContent = n;
-    if (re) re.textContent = this._fmt(n * avgComm);
+    if (re) re.textContent = this._fmt(this._simEarning());
   },
   _applyGlobal() {
     const val = Number(document.getElementById('global-slider').value);
@@ -378,7 +391,7 @@ const commissionCalcView = {
     s('tot-net',     this._fmt(totNet));
     s('avg-comm',    this._fmt(avgComm));
     s('need-count',  needForTarget + ' obchodov');
-    s('sim-result',  this._fmt(this._simCount * avgComm));
+    s('sim-result',  this._fmt(this._simEarning()));
   },
 
   // ── Uloženie ──────────────────────────────────────────────────────────────
