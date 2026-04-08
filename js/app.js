@@ -62,9 +62,6 @@ const app = {
 
   setView(id) {
     this.state.view = id;
-    // Kalkulačka potrebuje plnú šírku
-    const contentEl = document.getElementById('content');
-    if (contentEl) contentEl.className = (id === 'calc') ? 'wide' : '';
     this.renderNav();
     this.renderContent();
   },
