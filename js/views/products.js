@@ -387,7 +387,6 @@ const productsView = {
       product_type:              this._val('pf-type')          || 'internal',
       workflow_type:             this._val('pf-workflow')      || 'ai_web',
       fulfillment:               this._val('pf-fulfillment')   || 'admin',
-      fulfillment_by:            this._val('pf-fulfillment')   || 'admin',
       is_active:                 this._chk('pf-active'),
       active:                    this._chk('pf-active'),
       direct_purchase_allowed:   this._chk('pf-direct'),
