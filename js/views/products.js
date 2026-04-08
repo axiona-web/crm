@@ -8,10 +8,13 @@ const PRODUCT_CATEGORIES = {
 };
 
 const PRODUCT_TYPES = {
-  internal:    { label: 'Interný',  icon: '🏢' },
-  financial:   { label: 'Finančný', icon: '💳' },
-  real_estate: { label: 'Reality',  icon: '🏠' },
-  partner:     { label: 'Partner',  icon: '🤝' },
+  standard:    { label: 'Standard',  icon: '📦' },
+  custom:      { label: 'Custom',    icon: '⚙️' },
+  entry:       { label: 'Entry',     icon: '🚪' },
+  internal:    { label: 'Interný',   icon: '🏢' },
+  financial:   { label: 'Finančný',  icon: '💳' },
+  real_estate: { label: 'Reality',   icon: '🏠' },
+  partner:     { label: 'Partner',   icon: '🤝' },
 };
 
 const FULFILLMENT_OPTIONS = {
@@ -28,6 +31,8 @@ const REWARD_TRIGGERS = {
 };
 
 const WORKFLOW_TYPES = {
+  quick:       '⚡ Rýchly produkt',
+  project:     '🏗️ Projektový produkt',
   ai_web:      '⚡ Rýchly produkt',
   projektovy:  '🏗️ Projektový produkt',
   financial:   '💳 Financie',
@@ -208,15 +213,17 @@ const productsView = {
         <div class="form-row"><label class="form-label">Typ produktu</label>
           <select id="pf-type">
             ${Object.entries(PRODUCT_TYPES).map(([k,v]) =>
-              `<option value="${k}"${(p.product_type||'internal')===k?' selected':''}>${v.icon} ${v.label}</option>`
+              `<option value="${k}"${(p.product_type||'standard')===k?' selected':''}>${v.icon} ${v.label}</option>`
             ).join('')}
           </select>
         </div>
         <div class="form-row"><label class="form-label">Workflow</label>
           <select id="pf-workflow">
-            ${Object.entries(WORKFLOW_TYPES).map(([k,v]) =>
-              `<option value="${k}"${(p.workflow_type||'ai_web')===k?' selected':''}>${v}</option>`
-            ).join('')}
+            <option value="quick"${(p.workflow_type||'quick')==='quick'?' selected':''}>⚡ Rýchly produkt</option>
+            <option value="project"${p.workflow_type==='project'?' selected':''}>🏗️ Projektový produkt</option>
+            <option value="financial"${p.workflow_type==='financial'?' selected':''}>💳 Financie</option>
+            <option value="real_estate"${p.workflow_type==='real_estate'?' selected':''}>🏠 Reality</option>
+            <option value="partner"${p.workflow_type==='partner'?' selected':''}>🤝 Partner</option>
           </select>
         </div>
       </div>
@@ -376,7 +383,12 @@ const productsView = {
     if (!category) { errEl.textContent = 'Vyber kategóriu.';      errEl.style.display = 'block'; return; }
 
     const btn = document.getElementById('pf-submit');
-    if (btn) { btn.disabled = true; btn.textContent = 'Ukladám...'; }
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Ukladám...'; }
+
+    // Timeout feedback - ak trvá dlho
+    const slowTimer = setTimeout(() => {
+      if (btn && btn.disabled) btn.textContent = '⏳ Pripájam sa...';
+    }, 3000);
 
     const obj = {
       name,
@@ -417,10 +429,12 @@ const productsView = {
         if (error) throw error;
         this._products = this._products.map(p => p.id === id ? data : p);
       }
+      clearTimeout(slowTimer);
       app.state.products = this._products;
       modal.close();
       this._renderList();
     } catch(e) {
+      clearTimeout(slowTimer);
       errEl.textContent = 'Chyba: ' + (e.message || 'skús znova');
       errEl.style.display = 'block';
       if (btn) { btn.disabled = false; btn.textContent = 'Uložiť'; }
