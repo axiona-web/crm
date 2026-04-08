@@ -182,6 +182,23 @@ const app = {
           <nav id="nav"></nav>
           <div id="sidebar-foot" style="padding:12px 18px;border-top:1px solid var(--brd);font-size:12px;color:var(--muted);"></div>
           <div style="padding:10px 10px 16px;border-top:1px solid var(--brd);display:flex;flex-direction:column;gap:5px;">
+            ${realRole === 'admin' ? `
+              <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;padding:4px 8px 2px;">Zobraziť ako</div>
+              <div style="display:flex;gap:4px;flex-wrap:wrap;padding:0 4px 6px;">
+                ${Object.entries(ROLES).map(([k,v]) => `
+                  <button onclick="previewRole.set('${k}')"
+                    style="padding:4px 8px;border-radius:6px;border:1px solid ${previewRole.current()===k?v.color:'var(--brd)'};
+                      background:${previewRole.current()===k?v.color+'22':'transparent'};
+                      color:${previewRole.current()===k?v.color:'var(--muted)'};
+                      font-size:11px;font-weight:${previewRole.current()===k?'700':'400'};cursor:pointer;font-family:inherit;">
+                    ${v.icon} ${v.label}
+                  </button>`).join('')}
+                ${previewRole.current() ? `
+                  <button onclick="previewRole.clear()"
+                    style="padding:4px 8px;border-radius:6px;border:1px solid var(--red);background:rgba(242,85,85,0.1);
+                      color:var(--red);font-size:11px;cursor:pointer;font-family:inherit;">✕</button>` : ''}
+              </div>
+              <div style="height:1px;background:var(--brd);margin:2px 0 4px;"></div>` : ''}
             ${showTools ? `<button class="btn-ghost" style="font-size:11px;padding:5px 8px;text-align:left;" onclick="app.exportData()">⬇ Export záloha</button>` : ''}
             ${showTools ? `<button class="btn-ghost" style="font-size:11px;padding:5px 8px;text-align:left;" onclick="app.showApiSetup()">🔑 AI API kľúč</button>` : ''}
             <button class="btn-ghost" style="font-size:11px;padding:5px 8px;text-align:left;color:var(--red);" onclick="app.logout()">⎋ Odhlásiť</button>
