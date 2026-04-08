@@ -24,37 +24,6 @@ const partnersView = {
         <button class="btn-primary" onclick="partnersView.openInvite()">+ Pozvať užívateľa</button>
       </div>
 
-      <!-- Zobraziť ako -->
-      <div class="card" style="margin-bottom:16px;border-color:var(--acc-brd);background:linear-gradient(135deg,#1a180e,var(--card));">
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-          <div>
-            <div style="font-size:10px;color:var(--acc);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">👁 Zobraziť ako</div>
-            <div style="font-size:12px;color:var(--muted);">Simuluj pohľad inej roly — len ty to vidíš</div>
-          </div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;">
-            ${Object.entries(ROLES).map(([k, v]) => `
-              <button onclick="previewRole.set('${k}')"
-                style="padding:7px 13px;border-radius:8px;border:1px solid ${previewRole.current()===k ? v.color : 'var(--brd)'};
-                  background:${previewRole.current()===k ? v.color+'22' : 'transparent'};
-                  color:${previewRole.current()===k ? v.color : 'var(--muted)'};
-                  font-size:12px;font-weight:${previewRole.current()===k?'700':'400'};cursor:pointer;font-family:inherit;">
-                ${v.icon} ${v.label}
-              </button>`).join('')}
-            ${previewRole.current() ? `
-              <button onclick="previewRole.clear()"
-                style="padding:7px 13px;border-radius:8px;border:1px solid var(--red);background:rgba(242,85,85,0.1);
-                  color:var(--red);font-size:12px;cursor:pointer;font-family:inherit;">
-                ✕ Zrušiť
-              </button>` : ''}
-          </div>
-        </div>
-        ${previewRole.current() ? `
-          <div style="margin-top:10px;padding:8px 12px;background:rgba(212,148,58,0.1);border-radius:6px;font-size:12px;color:var(--acc);">
-            ⚠️ Práve simuluješ pohľad roly <strong>${ROLES[previewRole.current()]?.label}</strong> —
-            navigácia a obsah sa zmenili. Ostatní užívatelia ťa stále vidia ako Admin.
-          </div>` : ''}
-      </div>
-
       <div class="filter-tabs" style="margin-bottom:16px;">${filterBtns}</div>
       <div id="partners-list">
         <div style="color:var(--muted);font-size:13px;padding:20px 0;">Načítavam...</div>

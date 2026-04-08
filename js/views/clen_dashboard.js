@@ -14,28 +14,45 @@ const clenDashboardView = {
   },
 
   async afterRender() {
-    if (!this._loaded) await this._load();
+    this._loaded = false;
+    await this._load();
     this._renderContent();
   },
 
   async _load() {
     const uid = (await db.client.auth.getUser()).data.user?.id;
+
+    // Nájdi contact_id tohto usera cez email
+    const { data: profile } = await db.client
+      .from('profiles').select('email, referral_code, points, level, referred_by').eq('id', uid).single();
+
+    let contactId = null;
+    if (profile?.email) {
+      const { data: contact } = await db.client
+        .from('contacts').select('id').eq('email', profile.email).single();
+      contactId = contact?.id || null;
+    }
+
     const [{ data: orders }, { data: points }, { data: referrals }] = await Promise.all([
-      db.client.from('orders').select('*, products(name,category,subcategory)').eq('owner_id', uid).order('created_at', { ascending:false }).limit(10),
+      contactId
+        ? db.client.from('orders').select('*, products(name,category,subcategory)').eq('contact_id', contactId).order('created_at', { ascending:false }).limit(10)
+        : Promise.resolve({ data: [] }),
       db.client.from('point_transactions').select('*').eq('user_id', uid).order('created_at', { ascending:false }).limit(20),
       db.client.from('referrals').select('*, profiles!referrals_referred_user_id_fkey(name,email,created_at)').eq('referrer_user_id', uid),
     ]);
-    this._orders   = orders   || [];
-    this._points   = points   || [];
+
+    this._orders    = orders    || [];
+    this._points    = points    || [];
     this._referrals = referrals || [];
-    this._loaded   = true;
+    this._profile   = profile   || {};
+    this._loaded    = true;
   },
 
   _renderContent() {
     const el = document.getElementById('clen-wrap');
     if (!el) return;
 
-    const p         = auth.profile || {};
+    const p         = this._profile || auth.profile || {};
     const refLink   = `${window.location.origin}${window.location.pathname}?ref=${p.referral_code||''}`;
     const level     = p.level || 'Základný';
     const points    = p.points || 0;
