@@ -89,6 +89,7 @@ const TYPE_COLORS = {
 const NAV_BY_ROLE = {
   admin: [
     { id: 'dashboard',   icon: '⊞', label: 'Dashboard'   },
+    { id: 'queue',       icon: '✅', label: 'Na schválenie'},
     { id: 'members',     icon: '👥', label: 'Členovia'    },
     { id: 'pipeline',    icon: '📊', label: 'Pipeline'    },
     { id: 'orders',      icon: '📦', label: 'Objednávky'  },
@@ -100,19 +101,19 @@ const NAV_BY_ROLE = {
     { id: 'profile',     icon: '👤', label: 'Môj profil'  },
   ],
   obchodnik: [
-    { id: 'dashboard',   icon: '⊞', label: 'Dashboard'   },
-    { id: 'members',     icon: '👥', label: 'Moji členovia'},
-    { id: 'pipeline',    icon: '📊', label: 'Pipeline'    },
-    { id: 'orders',      icon: '📦', label: 'Objednávky'  },
-    { id: 'commissions', icon: '💰', label: 'Provízie'    },
-    { id: 'ai',          icon: '✦', label: 'AI Asistent' },
-    { id: 'profile',     icon: '👤', label: 'Môj profil'  },
+    { id: 'obchodnik_dashboard', icon: '⊞', label: 'Dashboard'    },
+    { id: 'members',     icon: '👥', label: 'Moji členovia' },
+    { id: 'pipeline',    icon: '📊', label: 'Pipeline'     },
+    { id: 'orders',      icon: '📦', label: 'Objednávky'   },
+    { id: 'commissions', icon: '💰', label: 'Provízie'     },
+    { id: 'ai',          icon: '✦', label: 'AI Asistent'  },
+    { id: 'profile',     icon: '👤', label: 'Môj profil'   },
   ],
   partner: [
-    { id: 'dashboard',   icon: '⊞', label: 'Dashboard'   },
-    { id: 'members',     icon: '👥', label: 'Moji klienti'},
-    { id: 'orders',      icon: '📦', label: 'Objednávky'  },
-    { id: 'profile',     icon: '👤', label: 'Môj profil'  },
+    { id: 'dashboard',   icon: '⊞', label: 'Dashboard'    },
+    { id: 'members',     icon: '👥', label: 'Moji klienti' },
+    { id: 'orders',      icon: '📦', label: 'Objednávky'   },
+    { id: 'profile',     icon: '👤', label: 'Môj profil'   },
   ],
   clen: [
     { id: 'clen_dashboard', icon: '⊞', label: 'Prehľad'    },

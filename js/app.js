@@ -1,17 +1,19 @@
 // ── js/app.js ─────────────────────────────────────────────────────────────────
 
 const VIEWS = {
-  dashboard:      dashboardView,
-  members:        membersView,
-  pipeline:       pipelineView,
-  orders:         ordersView,
-  commissions:    commissionsView,
-  products:       productsView,
-  calc:           commissionCalcView,
-  ai:             aiView,
-  partners:       partnersView,
-  profile:        profileView,
-  clen_dashboard: clenDashboardView,
+  dashboard:            dashboardView,
+  queue:                adminQueueView,
+  members:              membersView,
+  pipeline:             pipelineView,
+  orders:               ordersView,
+  commissions:          commissionsView,
+  products:             productsView,
+  calc:                 commissionCalcView,
+  ai:                   aiView,
+  partners:             partnersView,
+  profile:              profileView,
+  clen_dashboard:       clenDashboardView,
+  obchodnik_dashboard:  obchodnikDashboardView,
 };
 
 const app = {
@@ -30,9 +32,15 @@ const app = {
     else this.showLogin();
   },
 
+  _currentUserId() {
+    return auth.user?.id || null;
+  },
+
   async boot() {
     const role = previewRole.effective();
-    this.state.view = (role === 'clen') ? 'clen_dashboard' : 'dashboard';
+    if (role === 'clen')       this.state.view = 'clen_dashboard';
+    else if (role === 'obchodnik') this.state.view = 'obchodnik_dashboard';
+    else                       this.state.view = 'dashboard';
     document.getElementById('root').innerHTML = this._appShell();
     modal.init();
     if (role !== 'clen') await this._loadData();
