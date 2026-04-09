@@ -1,16 +1,20 @@
-// ── views/payouts.js ─────────────────────────────────────────────────────────
+// ── views/payouts.js — Fakturácia ────────────────────────────────────────────
 
 const payoutsView = {
-  _batches:     [],
-  _commissions: [],
+  _invoices: [],
+  _filter:   'all',
 
   render() {
     return `
       <div class="view-head">
-        <h2>💳 Výplaty provízií</h2>
-        <button class="btn-primary" onclick="payoutsView.openNewBatch()">+ Nová výplata</button>
+        <h2>🧾 Fakturácia</h2>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-ghost" style="font-size:12px;" onclick="payoutsView._openAdd('invoice')">+ Faktúra</button>
+          <button class="btn-ghost" style="font-size:12px;" onclick="payoutsView._openAdd('proforma')">+ Proforma</button>
+          <button class="btn-ghost" style="font-size:12px;" onclick="payoutsView._openAdd('credit_note')">+ Dobropis</button>
+        </div>
       </div>
-      <div id="payouts-wrap">
+      <div id="inv-wrap">
         <div style="color:var(--muted);font-size:13px;padding:20px 0;">Načítavam...</div>
       </div>`;
   },
@@ -21,286 +25,477 @@ const payoutsView = {
   },
 
   async _load() {
-    const [{ data: batches }, { data: comms }] = await Promise.all([
-      db.client
-        .from('commission_payout_batches')
-        .select('*, profiles!commission_payout_batches_created_by_fkey(name)')
-        .order('created_at', { ascending: false }),
-      db.client
-        .from('commissions')
-        .select('*, profiles!commissions_owner_id_fkey(name,email)')
-        .eq('status', 'approved')
-        .order('created_at'),
-    ]);
-    this._batches     = batches || [];
-    this._commissions = comms   || [];
-    // Sync do app.state
-    if (comms) {
-      const allComms = await db.client.from('commissions').select('*').order('created_at', { ascending: false });
-      if (allComms.data) app.state.commissions = allComms.data.map(r => ({
-        id: r.id, dealId: r.deal_id, contactId: r.contact_id,
-        ownerId: r.owner_id, order_id: r.order_id,
-        amount: r.amount || 0, rate: r.rate || 0,
-        status: r.status || 'pending', date: r.date || '',
-        notes: r.notes || '', createdAt: r.created_at,
-        approvedBy: r.approved_by, approvedAt: r.approved_at, paidAt: r.paid_at,
-      }));
+    const { data, error } = await db.client
+      .from('invoices')
+      .select('*, contacts(name,email), deals(title)')
+      .order('issue_date', { ascending: false });
+    if (error) console.error('Invoices error:', error);
+    this._invoices = data || [];
+    // Auto-update overdue
+    await this._checkOverdue();
+  },
+
+  async _checkOverdue() {
+    const today = new Date().toISOString().slice(0,10);
+    const overdue = this._invoices
+      .filter(i => i.status === 'sent' && i.due_date < today)
+      .map(i => i.id);
+    if (overdue.length > 0) {
+      await db.client.from('invoices').update({ status: 'overdue' }).in('id', overdue);
+      overdue.forEach(id => {
+        const inv = this._invoices.find(i => i.id === id);
+        if (inv) inv.status = 'overdue';
+      });
     }
   },
 
-  _fmt(v) { return Math.round(v||0).toLocaleString('sk-SK') + ' €'; },
+  _fmt(v) { return (Math.round((v||0)*100)/100).toLocaleString('sk-SK',{minimumFractionDigits:2}) + ' €'; },
 
-  _byUser() {
-    const map = {};
-    this._commissions.forEach(c => {
-      const uid  = c.owner_id || 'unknown';
-      const name = c.profiles?.name || c.profiles?.email || 'Neznámy';
-      if (!map[uid]) map[uid] = { name, items: [], total: 0 };
-      map[uid].items.push(c);
-      map[uid].total += c.amount || 0;
-    });
-    return map;
+  _statusCfg(s) {
+    return {
+      draft:       { label:'Koncept',       color:'var(--muted)'  },
+      sent:        { label:'Odoslaná',      color:'var(--blue)'   },
+      paid:        { label:'Uhradená',      color:'var(--green)'  },
+      overdue:     { label:'Po splatnosti', color:'var(--red)'    },
+      credited:    { label:'Dobropisovaná', color:'var(--purple)' },
+      cancelled:   { label:'Zrušená',       color:'var(--muted)'  },
+    }[s] || { label: s, color:'var(--muted)' };
+  },
+
+  _typeCfg(t) {
+    return {
+      invoice:     { label:'Faktúra',  icon:'🧾' },
+      proforma:    { label:'Proforma', icon:'📋' },
+      credit_note: { label:'Dobropis', icon:'↩️' },
+    }[t] || { label: t, icon:'📄' };
   },
 
   _render() {
-    const el = document.getElementById('payouts-wrap');
+    const el = document.getElementById('inv-wrap');
     if (!el) return;
 
-    const totalApproved = this._commissions.reduce((a,c) => a+(c.amount||0), 0);
-    const totalPaid     = this._batches.filter(b=>b.status==='paid').reduce((a,b)=>a+(b.total_amount||0),0);
-    const byUser        = this._byUser();
+    const all      = this._invoices;
+    const sent     = all.filter(i => i.status === 'sent');
+    const paid     = all.filter(i => i.status === 'paid');
+    const overdue  = all.filter(i => i.status === 'overdue');
+    const draft    = all.filter(i => i.status === 'draft');
+
+    const totalSent    = sent.reduce((a,i)=>a+(i.amount_inc_vat||0),0);
+    const totalPaid    = paid.reduce((a,i)=>a+(i.amount_inc_vat||0),0);
+    const totalOverdue = overdue.reduce((a,i)=>a+(i.amount_inc_vat||0),0);
+
+    const filtered = this._filter === 'all' ? all : all.filter(i => i.status === this._filter);
 
     el.innerHTML = `
       <!-- KPI -->
-      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:16px;">
-        <div class="card" style="text-align:center;background:linear-gradient(135deg,#1a180e,var(--card));border-color:var(--acc-brd);">
-          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Na výplatu</div>
-          <div class="mono" style="font-size:22px;font-weight:700;color:var(--acc);">${this._fmt(totalApproved)}</div>
-          <div style="font-size:11px;color:var(--muted);">${this._commissions.length} schválených provízií</div>
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px;">
+        <div class="card" style="text-align:center;">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Koncepty</div>
+          <div class="mono" style="font-size:20px;font-weight:700;">${draft.length}</div>
         </div>
         <div class="card" style="text-align:center;">
-          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Obchodníkov čaká</div>
-          <div class="mono" style="font-size:22px;font-weight:700;">${Object.keys(byUser).length}</div>
+          <div style="font-size:10px;color:var(--blue);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Odoslané</div>
+          <div class="mono" style="font-size:20px;font-weight:700;color:var(--blue);">${this._fmt(totalSent)}</div>
+          <div style="font-size:11px;color:var(--muted);">${sent.length} faktúr</div>
         </div>
-        <div class="card" style="text-align:center;">
-          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Vyplatené historicky</div>
-          <div class="mono" style="font-size:22px;font-weight:700;color:var(--green);">${this._fmt(totalPaid)}</div>
+        <div class="card" style="text-align:center;background:linear-gradient(135deg,#0a1f12,var(--card));border-color:rgba(62,207,142,0.3);">
+          <div style="font-size:10px;color:var(--green);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Uhradené</div>
+          <div class="mono" style="font-size:20px;font-weight:700;color:var(--green);">${this._fmt(totalPaid)}</div>
+          <div style="font-size:11px;color:var(--muted);">${paid.length} faktúr</div>
+        </div>
+        <div class="card" style="text-align:center;${overdue.length>0?'border-color:rgba(242,85,85,0.4);':''}">
+          <div style="font-size:10px;color:var(--red);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Po splatnosti</div>
+          <div class="mono" style="font-size:20px;font-weight:700;color:var(--red);">${this._fmt(totalOverdue)}</div>
+          <div style="font-size:11px;color:var(--muted);">${overdue.length} faktúr</div>
         </div>
       </div>
 
-      <!-- Čakajúce výplaty -->
-      ${this._commissions.length > 0 ? `
-        <div class="card" style="margin-bottom:16px;border-color:rgba(62,207,142,0.3);">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-            <div style="font-size:12px;font-weight:600;color:var(--green);text-transform:uppercase;letter-spacing:0.06em;">
-              ✓ Schválené — čakajú na výplatu
-            </div>
-            <button class="btn-primary" style="font-size:12px;"
-              onclick="payoutsView.payAll()">
-              💳 Vyplatiť všetkých — ${this._fmt(totalApproved)}
-            </button>
-          </div>
-          ${Object.entries(byUser).map(([uid, u]) => `
-            <div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--brd);">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                <div style="font-weight:600;font-size:14px;">👤 ${esc(u.name)}</div>
-                <div style="display:flex;align-items:center;gap:10px;">
-                  <span class="mono" style="font-size:16px;font-weight:700;color:var(--green);">${this._fmt(u.total)}</span>
-                  <button class="btn-ghost" style="font-size:12px;color:var(--green);"
-                    onclick="payoutsView.payOne('${uid}')">
-                    💳 Vyplatiť
-                  </button>
-                </div>
-              </div>
-              ${u.items.map(c => `
-                <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);padding:3px 8px;">
-                  <span>${FMT(c.date||c.created_at)}${c.notes?` · ${esc(c.notes.slice(0,50))}`:''}${c.rate?` · ${c.rate}%`:''}</span>
-                  <span class="mono" style="font-weight:600;">${this._fmt(c.amount)}</span>
-                </div>`).join('')}
-            </div>`).join('')}
-        </div>` : `
-        <div class="card" style="margin-bottom:16px;text-align:center;padding:28px;color:var(--muted);">
-          <div style="font-size:20px;margin-bottom:8px;">✓</div>
-          Žiadne schválené provízie na výplatu
-        </div>`}
-
-      <!-- História -->
-      <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px;">
-        História výplatných dávok (${this._batches.length})
+      <!-- Filter -->
+      <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">
+        ${['all','draft','sent','paid','overdue','credited','cancelled'].map(f => {
+          const labels = {all:'Všetky',draft:'Koncepty',sent:'Odoslané',paid:'Uhradené',overdue:'Po splatnosti',credited:'Dobropisované',cancelled:'Zrušené'};
+          const cnt = f==='all' ? all.length : all.filter(i=>i.status===f).length;
+          return `<button class="filter-tab${this._filter===f?' active':''}"
+            onclick="payoutsView._filter='${f}';payoutsView._render();">
+            ${labels[f]} (${cnt})</button>`;
+        }).join('')}
       </div>
-      ${this._batches.length === 0
-        ? `<div style="color:var(--muted);font-size:13px;">Žiadne výplaty</div>`
-        : this._batches.map(b => {
-            const sc = { draft:'var(--muted)', confirmed:'var(--blue)', paid:'var(--green)' }[b.status] || 'var(--muted)';
-            const sl = { draft:'Koncept', confirmed:'Potvrdená', paid:'Vyplatená' }[b.status] || b.status;
+
+      <!-- Zoznam -->
+      ${filtered.length === 0
+        ? `<div class="card" style="text-align:center;padding:40px;color:var(--muted);">
+            <div style="font-size:24px;margin-bottom:8px;">🧾</div>
+            Žiadne faktúry
+          </div>`
+        : filtered.map(i => {
+            const sc   = this._statusCfg(i.status);
+            const tc   = this._typeCfg(i.invoice_type);
+            const days = i.due_date ? Math.round((new Date(i.due_date)-new Date())/86400000) : null;
+            const isOverdue = i.status === 'overdue';
             return `
-              <div class="card" style="margin-bottom:8px;cursor:pointer;" onclick="payoutsView.openBatch('${b.id}')">
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                  <div>
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-                      <span class="badge" style="color:${sc};background:${sc}18;border:1px solid ${sc}44;font-size:10px;">${sl}</span>
-                      <span style="font-size:13px;font-weight:600;">${FMT(b.payout_date||b.created_at)}</span>
+              <div class="card" style="margin-bottom:8px;cursor:pointer;${isOverdue?'border-color:rgba(242,85,85,0.4);':''}"
+                onclick="payoutsView._openDetail('${i.id}')">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+                  <div style="flex:1;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap;">
+                      <span style="font-size:12px;">${tc.icon}</span>
+                      <span style="font-size:13px;font-weight:700;">${esc(i.invoice_number)}</span>
+                      <span class="badge" style="background:${sc.color}18;color:${sc.color};border:1px solid ${sc.color}44;font-size:10px;">${sc.label}</span>
+                      <span style="font-size:11px;color:var(--muted);">${tc.label}</span>
                     </div>
-                    <div style="font-size:12px;color:var(--muted);">
-                      ${esc(b.profiles?.name||'—')} ${b.note?` · ${esc(b.note)}`:''}
+                    <div style="display:flex;gap:12px;font-size:12px;color:var(--muted);flex-wrap:wrap;">
+                      ${i.contacts?.name ? `<span>👤 ${esc(i.contacts.name)}</span>` : i.client_name ? `<span>👤 ${esc(i.client_name)}</span>` : ''}
+                      ${i.deals?.title  ? `<span>📊 ${esc(i.deals.title)}</span>` : ''}
+                      <span>📅 Vystavená: ${FMT(i.issue_date)}</span>
+                      ${i.due_date ? `<span style="color:${isOverdue?'var(--red)':days<=3?'var(--acc)':'var(--muted)'};">
+                        ⏱ Splatnosť: ${FMT(i.due_date)}${days!==null?' ('+Math.abs(days)+'d '+(days<0?'po':'do')+')'  :''}</span>` : ''}
+                      ${i.paid_date ? `<span style="color:var(--green);">✓ Uhradené: ${FMT(i.paid_date)}</span>` : ''}
                     </div>
                   </div>
-                  <div class="mono" style="font-size:18px;font-weight:700;color:var(--green);">${this._fmt(b.total_amount)}</div>
+                  <div style="text-align:right;flex-shrink:0;">
+                    <div class="mono" style="font-size:16px;font-weight:700;color:var(--acc);">${this._fmt(i.amount_inc_vat)}</div>
+                    <div style="font-size:11px;color:var(--muted);">bez DPH: ${this._fmt(i.amount_ex_vat)}</div>
+                  </div>
                 </div>
               </div>`;
           }).join('')}`;
   },
 
-  async payOne(userId) {
-    const byUser = this._byUser();
-    const u      = byUser[userId];
-    if (!u) return;
-    if (!confirm(`Vyplatiť ${u.name}: ${this._fmt(u.total)}?`)) return;
-    await this._createBatch(u.items, `Výplata: ${u.name}`);
-  },
+  // ── Formulár — nová faktúra ───────────────────────────────────────────────
+  async _openAdd(type) {
+    const tc       = this._typeCfg(type);
+    const contacts = app.state.contacts || [];
+    const deals    = app.state.deals    || [];
+    const number   = await this._genNumber(type);
+    const today    = new Date().toISOString().slice(0,10);
+    const due      = new Date(Date.now() + 14*86400000).toISOString().slice(0,10);
 
-  async payAll() {
-    const total = this._commissions.reduce((a,c)=>a+(c.amount||0),0);
-    if (!confirm(`Vyplatiť všetkých obchodníkov: ${this._fmt(total)}?`)) return;
-    await this._createBatch(this._commissions, 'Hromadná výplata');
-  },
-
-  async _createBatch(items, noteDefault) {
-    if (!items?.length) { alert('Žiadne položky na výplatu.'); return; }
-
-    const total = items.reduce((a,c)=>a+(c.amount||0),0);
-    const uid   = (await db.client.auth.getUser()).data.user?.id;
-    const today = new Date().toISOString().slice(0,10);
-
-    // Pýtaj sa na poznámku
-    const note = prompt('Poznámka k výplate (voliteľné):', noteDefault) ?? noteDefault;
-
-    try {
-      // 1. Vytvor batch
-      const { data: batch, error: be } = await db.client
-        .from('commission_payout_batches')
-        .insert({
-          created_by: uid, total_amount: total,
-          status: 'paid', payout_date: today, note,
-        })
-        .select().single();
-      if (be) throw be;
-
-      // 2. Vytvor payout items
-      const pItems = items.map(c => ({
-        batch_id:      batch.id,
-        commission_id: c.id,
-        user_id:       c.owner_id,
-        amount:        c.amount || 0,
-      }));
-      const { error: ie } = await db.client.from('commission_payout_items').insert(pItems);
-      if (ie) throw ie;
-
-      // 3. Označ komisie ako paid
-      const { error: ce } = await db.client
-        .from('commissions')
-        .update({ status: 'paid', paid_at: new Date().toISOString() })
-        .in('id', items.map(c => c.id));
-      if (ce) throw ce;
-
-      // 4. Notifikácie obchodníkom
-      const byUid = {};
-      items.forEach(c => { byUid[c.owner_id] = (byUid[c.owner_id]||0) + (c.amount||0); });
-      for (const [oUid, amt] of Object.entries(byUid)) {
-        await db.client.from('notifications').insert({
-          user_id:     oUid,
-          type:        'commission_paid',
-          title:       'Provízia vyplatená',
-          message:     `Bola ti vyplatená provízia ${this._fmt(amt)}.`,
-          entity_type: 'payout_batch',
-          entity_id:   batch.id,
-        });
-      }
-
-      alert(`✓ Výplata vytvorená: ${this._fmt(total)}`);
-      await this._load();
-      this._render();
-    } catch(e) {
-      alert('Chyba: ' + e.message);
-      console.error(e);
-    }
-  },
-
-  openNewBatch() {
-    if (!this._commissions.length) {
-      alert('Žiadne schválené provízie na výplatu.\n\nNajprv schváľ provízie v záložke Provízie.');
-      return;
-    }
-    const total = this._commissions.reduce((a,c)=>a+(c.amount||0),0);
-    const byUser = this._byUser();
-    modal.open('Nová výplatná dávka', `
-      <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">
-        Vyber obchodníkov pre túto výplatnú dávku:
+    modal.open(`Nová ${tc.label}`, `
+      <div class="form-grid-2">
+        <div class="form-row"><label class="form-label">Číslo dokladu</label>
+          <input id="if-number" value="${esc(number)}" /></div>
+        <div class="form-row"><label class="form-label">Typ</label>
+          <select id="if-type">
+            <option value="invoice"${type==='invoice'?' selected':''}>Faktúra</option>
+            <option value="proforma"${type==='proforma'?' selected':''}>Proforma</option>
+            <option value="credit_note"${type==='credit_note'?' selected':''}>Dobropis</option>
+          </select></div>
       </div>
-      ${Object.entries(byUser).map(([uid, u]) => `
-        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px;border:1px solid var(--brd);border-radius:8px;margin-bottom:6px;">
-          <input type="checkbox" data-uid="${uid}" checked
-            style="width:16px;height:16px;accent-color:var(--acc);">
-          <div style="flex:1;">
-            <div style="font-weight:600;">${esc(u.name)}</div>
-            <div style="font-size:12px;color:var(--muted);">${u.items.length} provízií</div>
-          </div>
-          <div class="mono" style="font-weight:700;color:var(--acc);">${this._fmt(u.total)}</div>
-        </label>`).join('')}
-      <div class="form-row" style="margin-top:12px;">
-        <label class="form-label">Dátum výplaty</label>
-        <input id="bp-date" type="date" value="${new Date().toISOString().slice(0,10)}">
+
+      <div class="form-grid-2">
+        <div class="form-row"><label class="form-label">Kontakt</label>
+          <select id="if-contact" onchange="payoutsView._onContact(this.value)">
+            <option value="">— vybrať —</option>
+            ${contacts.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}
+          </select></div>
+        <div class="form-row"><label class="form-label">Deal</label>
+          <select id="if-deal" onchange="payoutsView._onDeal(this.value)">
+            <option value="">— vybrať —</option>
+            ${deals.filter(d=>!['lost','cancelled'].includes(d.status)).map(d=>`<option value="${d.id}">${esc(d.title)} — ${(d.sale_price_snapshot||0).toLocaleString('sk-SK')} €</option>`).join('')}
+          </select></div>
       </div>
-      <div class="form-row">
-        <label class="form-label">Poznámka</label>
-        <input id="bp-note" placeholder="napr. Výplata apríl 2026" value="Výplata ${new Date().toLocaleDateString('sk-SK',{month:'long',year:'numeric'})}">
+
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 8px;">Odberateľ</div>
+      <div class="form-row"><label class="form-label">Názov *</label>
+        <input id="if-cname" placeholder="Meno / Firma" /></div>
+      <div class="form-row"><label class="form-label">Adresa</label>
+        <input id="if-caddr" placeholder="Ulica, PSČ Mesto" /></div>
+      <div class="form-grid-2">
+        <div class="form-row"><label class="form-label">IČO</label><input id="if-ico" /></div>
+        <div class="form-row"><label class="form-label">DIČ</label><input id="if-dic" /></div>
       </div>
+
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 8px;">Finančné</div>
+      <div class="form-grid-2">
+        <div class="form-row"><label class="form-label">Suma bez DPH (€) *</label>
+          <input id="if-amount" type="number" step="0.01" oninput="payoutsView._calcVat()" /></div>
+        <div class="form-row"><label class="form-label">Sadzba DPH (%)</label>
+          <select id="if-vat" onchange="payoutsView._calcVat()">
+            <option value="20">20%</option>
+            <option value="10">10%</option>
+            <option value="0">0% (bez DPH)</option>
+          </select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+        <div style="background:var(--inp);border:1px solid var(--brd);border-radius:8px;padding:8px;text-align:center;">
+          <div style="font-size:10px;color:var(--muted);">DPH</div>
+          <div class="mono" id="if-vat-amount" style="font-weight:700;color:var(--blue);">0,00 €</div>
+        </div>
+        <div style="background:var(--inp);border:1px solid var(--brd);border-radius:8px;padding:8px;text-align:center;">
+          <div style="font-size:10px;color:var(--muted);">Spolu s DPH</div>
+          <div class="mono" id="if-total" style="font-weight:700;color:var(--green);">0,00 €</div>
+        </div>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 8px;">Dátumy</div>
+      <div class="form-grid-2">
+        <div class="form-row"><label class="form-label">Dátum vystavenia</label>
+          <input id="if-issue" type="date" value="${today}" /></div>
+        <div class="form-row"><label class="form-label">Dátum splatnosti</label>
+          <input id="if-due" type="date" value="${due}" /></div>
+      </div>
+
+      <div class="form-row"><label class="form-label">Popis / Položky</label>
+        <textarea id="if-notes" style="min-height:60px;resize:vertical;" placeholder="Popis plnenia, položky..."></textarea></div>
+      <div class="form-row"><label class="form-label">Interná poznámka</label>
+        <input id="if-internal" placeholder="Len pre interné účely" /></div>
+
       <div class="form-actions">
-        <button class="btn-primary" onclick="payoutsView._submitModal()">💳 Vytvoriť výplatu</button>
+        <button class="btn-primary" id="if-btn" onclick="payoutsView._saveInvoice('')">Vytvoriť</button>
         <button class="btn-ghost" onclick="modal.close()">Zrušiť</button>
       </div>`);
   },
 
-  async _submitModal() {
-    const note  = document.getElementById('bp-note')?.value || 'Výplata';
-    const boxes = document.querySelectorAll('input[data-uid]:checked');
-    const selectedUids = [...boxes].map(b => b.dataset.uid);
-
-    if (!selectedUids.length) { alert('Vyber aspoň jedného obchodníka.'); return; }
-
-    const byUser   = this._byUser();
-    const selected = this._commissions.filter(c => selectedUids.includes(c.owner_id));
-
-    modal.close();
-    await this._createBatch(selected, note);
+  async _genNumber(type) {
+    const { data } = await db.client.rpc('generate_invoice_number', { p_type: type });
+    const prefix = type==='invoice' ? 'FAK' : type==='proforma' ? 'PRO' : 'DOB';
+    return data || (prefix + '-' + new Date().getFullYear() + '-0001');
   },
 
-  async openBatch(id) {
-    const { data: items } = await db.client
-      .from('commission_payout_items')
-      .select('*, profiles!commission_payout_items_user_id_fkey(name,email), commissions(amount,date,rate)')
-      .eq('batch_id', id);
+  _onContact(contactId) {
+    const c = (app.state.contacts||[]).find(x => x.id === contactId);
+    if (!c) return;
+    const n = document.getElementById('if-cname');
+    if (n && !n.value) n.value = c.name || '';
+  },
 
-    const batch = this._batches.find(b => b.id === id);
-    const total = (items||[]).reduce((a,i)=>a+(i.amount||0),0);
+  _onDeal(dealId) {
+    const d = (app.state.deals||[]).find(x => x.id === dealId);
+    if (!d) return;
+    const a = document.getElementById('if-amount');
+    if (a && !a.value) {
+      a.value = d.sale_price_snapshot || 0;
+      this._calcVat();
+    }
+    const n = document.getElementById('if-notes');
+    if (n && !n.value) n.value = d.title || '';
+    // Nastav kontakt
+    if (d.contact_id) {
+      const cs = document.getElementById('if-contact');
+      if (cs) cs.value = d.contact_id;
+      this._onContact(d.contact_id);
+    }
+  },
 
-    modal.open('Detail výplaty', `
-      <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">
-        ${FMT(batch?.payout_date||batch?.created_at)}
-        ${batch?.note ? ` · ${esc(batch.note)}` : ''}
+  _calcVat() {
+    const amount = parseFloat(document.getElementById('if-amount')?.value) || 0;
+    const rate   = parseFloat(document.getElementById('if-vat')?.value)   || 0;
+    const vat    = Math.round(amount * rate) / 100;
+    const total  = amount + vat;
+    const fmt    = v => v.toLocaleString('sk-SK',{minimumFractionDigits:2}) + ' €';
+    const va = document.getElementById('if-vat-amount');
+    const to = document.getElementById('if-total');
+    if (va) va.textContent = fmt(vat);
+    if (to) to.textContent = fmt(total);
+  },
+
+  async _saveInvoice(id) {
+    const isNew  = !id;
+    const number = document.getElementById('if-number')?.value.trim();
+    const amount = parseFloat(document.getElementById('if-amount')?.value) || 0;
+    if (!number || !amount) { alert('Zadaj číslo dokladu a sumu.'); return; }
+
+    const btn = document.getElementById('if-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳...'; }
+
+    const rate  = parseFloat(document.getElementById('if-vat')?.value) || 0;
+    const vat   = Math.round(amount * rate) / 100;
+    const total = amount + vat;
+    const uid   = app._currentUserId();
+
+    const obj = {
+      invoice_number:  number,
+      invoice_type:    document.getElementById('if-type')?.value     || 'invoice',
+      deal_id:         document.getElementById('if-deal')?.value     || null,
+      contact_id:      document.getElementById('if-contact')?.value  || null,
+      client_name:     document.getElementById('if-cname')?.value    || null,
+      client_address:  document.getElementById('if-caddr')?.value    || null,
+      client_ico:      document.getElementById('if-ico')?.value      || null,
+      client_dic:      document.getElementById('if-dic')?.value      || null,
+      amount_ex_vat:   amount,
+      vat_rate:        rate,
+      vat_amount:      vat,
+      amount_inc_vat:  total,
+      issue_date:      document.getElementById('if-issue')?.value    || new Date().toISOString().slice(0,10),
+      due_date:        document.getElementById('if-due')?.value      || null,
+      notes:           document.getElementById('if-notes')?.value    || null,
+      internal_note:   document.getElementById('if-internal')?.value || null,
+      status:          'draft',
+      created_by:      uid,
+    };
+
+    try {
+      const q = isNew
+        ? db.client.from('invoices').insert(obj).select('*, contacts(name,email), deals(title)').single()
+        : db.client.from('invoices').update(obj).eq('id', id).select('*, contacts(name,email), deals(title)').single();
+      const { data, error } = await q;
+      if (error) throw error;
+      if (isNew) this._invoices.unshift(data);
+      else this._invoices = this._invoices.map(i => i.id === id ? data : i);
+      modal.close();
+      this._render();
+    } catch(e) {
+      alert('Chyba: ' + e.message);
+      if (btn) { btn.disabled = false; btn.textContent = isNew ? 'Vytvoriť' : 'Uložiť'; }
+    }
+  },
+
+  // ── Detail faktúry ────────────────────────────────────────────────────────
+  _openDetail(id) {
+    const i  = this._invoices.find(x => x.id === id);
+    if (!i) return;
+    const sc = this._statusCfg(i.status);
+    const tc = this._typeCfg(i.invoice_type);
+
+    modal.open(`${tc.icon} ${i.invoice_number}`, `
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
+        <span class="badge" style="background:${sc.color}18;color:${sc.color};border:1px solid ${sc.color}44;">${sc.label}</span>
+        <span style="font-size:12px;color:var(--muted);">${tc.label} · Vystavená: ${FMT(i.issue_date)} · Splatnosť: ${FMT(i.due_date)}</span>
       </div>
-      ${(items||[]).map(i => `
-        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--brd);">
-          <div>
-            <div style="font-size:13px;font-weight:600;">${esc(i.profiles?.name||i.profiles?.email||'—')}</div>
-            <div style="font-size:11px;color:var(--muted);">${FMT(i.commissions?.date)}${i.commissions?.rate?` · ${i.commissions.rate}%`:''}</div>
-          </div>
-          <div class="mono" style="font-weight:700;color:var(--green);">${this._fmt(i.amount)}</div>
-        </div>`).join('')}
-      <div style="display:flex;justify-content:space-between;padding:12px 0 0;font-weight:700;">
-        <span>Spolu</span>
-        <span class="mono" style="color:var(--green);">${this._fmt(total)}</span>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+        <div>
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;">Odberateľ</div>
+          <div style="font-weight:600;">${esc(i.client_name||i.contacts?.name||'—')}</div>
+          ${i.client_address?`<div style="font-size:12px;color:var(--muted);">${esc(i.client_address)}</div>`:''}
+          ${i.client_ico?`<div style="font-size:12px;color:var(--muted);">IČO: ${esc(i.client_ico)}</div>`:''}
+          ${i.client_dic?`<div style="font-size:12px;color:var(--muted);">DIČ: ${esc(i.client_dic)}</div>`:''}
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;">Suma</div>
+          <div style="font-size:12px;color:var(--muted);">Bez DPH: ${this._fmt(i.amount_ex_vat)}</div>
+          <div style="font-size:12px;color:var(--muted);">DPH (${i.vat_rate}%): ${this._fmt(i.vat_amount)}</div>
+          <div class="mono" style="font-size:20px;font-weight:700;color:var(--acc);margin-top:4px;">${this._fmt(i.amount_inc_vat)}</div>
+        </div>
       </div>
-      <div class="form-actions"><button class="btn-ghost" onclick="modal.close()">Zavrieť</button></div>`);
+
+      ${i.notes?`<div style="background:var(--inp);border:1px solid var(--brd);border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:12px;">${esc(i.notes)}</div>`:''}
+      ${i.deals?.title?`<div style="font-size:12px;color:var(--muted);margin-bottom:12px;">📊 Deal: ${esc(i.deals.title)}</div>`:''}
+      ${i.paid_date?`<div style="font-size:12px;color:var(--green);margin-bottom:12px;">✓ Uhradené: ${FMT(i.paid_date)}</div>`:''}
+
+      <!-- Akcie -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+        ${i.status==='draft'?`
+          <button class="btn-primary" style="font-size:12px;" onclick="payoutsView._setStatus('${id}','sent')">📤 Odoslať</button>`:''}
+        ${i.status==='sent'||i.status==='overdue'?`
+          <button class="btn-primary" style="font-size:12px;background:var(--green);" onclick="payoutsView._markPaid('${id}')">✓ Uhradiť</button>`:''}
+        ${['draft','sent','overdue'].includes(i.status)?`
+          <button class="btn-ghost" style="font-size:12px;" onclick="payoutsView._openEdit('${id}')">✏️ Upraviť</button>
+          <button class="btn-ghost" style="font-size:12px;color:var(--red);" onclick="payoutsView._setStatus('${id}','cancelled')">✕ Zrušiť</button>`:''}
+        ${i.status==='paid'?`
+          <button class="btn-ghost" style="font-size:12px;" onclick="payoutsView._openAdd('credit_note')">↩️ Dobropis</button>`:''}
+      </div>
+
+      <div class="form-actions">
+        <button class="btn-ghost" onclick="modal.close()">Zavrieť</button>
+      </div>`);
+  },
+
+  async _setStatus(id, status) {
+    const { error } = await db.client.from('invoices').update({ status }).eq('id', id);
+    if (error) { alert('Chyba: ' + error.message); return; }
+    const inv = this._invoices.find(i => i.id === id);
+    if (inv) inv.status = status;
+    modal.close();
+    this._render();
+  },
+
+  async _markPaid(id) {
+    const date = prompt('Dátum úhrady:', new Date().toISOString().slice(0,10));
+    if (!date) return;
+    const { error } = await db.client.from('invoices')
+      .update({ status: 'paid', paid_date: date }).eq('id', id);
+    if (error) { alert('Chyba: ' + error.message); return; }
+    const inv = this._invoices.find(i => i.id === id);
+    if (inv) { inv.status = 'paid'; inv.paid_date = date; }
+    modal.close();
+    this._render();
+  },
+
+  _openEdit(id) {
+    const i = this._invoices.find(x => x.id === id);
+    if (!i) return;
+    modal.close();
+    setTimeout(() => this._openEditModal(i), 100);
+  },
+
+  _openEditModal(i) {
+    const contacts = app.state.contacts || [];
+    const deals    = app.state.deals    || [];
+    modal.open(`Upraviť — ${esc(i.invoice_number)}`, `
+      <div class="form-grid-2">
+        <div class="form-row"><label class="form-label">Číslo dokladu</label>
+          <input id="if-number" value="${esc(i.invoice_number)}" /></div>
+        <div class="form-row"><label class="form-label">Typ</label>
+          <select id="if-type">
+            <option value="invoice"${i.invoice_type==='invoice'?' selected':''}>Faktúra</option>
+            <option value="proforma"${i.invoice_type==='proforma'?' selected':''}>Proforma</option>
+            <option value="credit_note"${i.invoice_type==='credit_note'?' selected':''}>Dobropis</option>
+          </select></div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row"><label class="form-label">Kontakt</label>
+          <select id="if-contact">
+            <option value="">—</option>
+            ${contacts.map(c=>`<option value="${c.id}"${i.contact_id===c.id?' selected':''}>${esc(c.name)}</option>`).join('')}
+          </select></div>
+        <div class="form-row"><label class="form-label">Deal</label>
+          <select id="if-deal">
+            <option value="">—</option>
+            ${deals.map(d=>`<option value="${d.id}"${i.deal_id===d.id?' selected':''}>${esc(d.title)}</option>`).join('')}
+          </select></div>
+      </div>
+      <div class="form-row"><label class="form-label">Odberateľ</label>
+        <input id="if-cname" value="${esc(i.client_name||'')}" /></div>
+      <div class="form-row"><label class="form-label">Adresa</label>
+        <input id="if-caddr" value="${esc(i.client_address||'')}" /></div>
+      <div class="form-grid-2">
+        <div class="form-row"><label class="form-label">IČO</label><input id="if-ico" value="${esc(i.client_ico||'')}" /></div>
+        <div class="form-row"><label class="form-label">DIČ</label><input id="if-dic" value="${esc(i.client_dic||'')}" /></div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row"><label class="form-label">Suma bez DPH (€)</label>
+          <input id="if-amount" type="number" step="0.01" value="${i.amount_ex_vat||''}" oninput="payoutsView._calcVat()" /></div>
+        <div class="form-row"><label class="form-label">DPH (%)</label>
+          <select id="if-vat" onchange="payoutsView._calcVat()">
+            <option value="20"${i.vat_rate==20?' selected':''}>20%</option>
+            <option value="10"${i.vat_rate==10?' selected':''}>10%</option>
+            <option value="0"${i.vat_rate==0?' selected':''}>0%</option>
+          </select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+        <div style="background:var(--inp);border:1px solid var(--brd);border-radius:8px;padding:8px;text-align:center;">
+          <div style="font-size:10px;color:var(--muted);">DPH</div>
+          <div class="mono" id="if-vat-amount" style="font-weight:700;color:var(--blue);">${this._fmt(i.vat_amount)}</div>
+        </div>
+        <div style="background:var(--inp);border:1px solid var(--brd);border-radius:8px;padding:8px;text-align:center;">
+          <div style="font-size:10px;color:var(--muted);">Spolu s DPH</div>
+          <div class="mono" id="if-total" style="font-weight:700;color:var(--green);">${this._fmt(i.amount_inc_vat)}</div>
+        </div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row"><label class="form-label">Vystavená</label>
+          <input id="if-issue" type="date" value="${i.issue_date||''}" /></div>
+        <div class="form-row"><label class="form-label">Splatnosť</label>
+          <input id="if-due" type="date" value="${i.due_date||''}" /></div>
+      </div>
+      <div class="form-row"><label class="form-label">Popis</label>
+        <textarea id="if-notes" style="min-height:55px;resize:vertical;">${esc(i.notes||'')}</textarea></div>
+      <div class="form-row"><label class="form-label">Interná poznámka</label>
+        <input id="if-internal" value="${esc(i.internal_note||'')}" /></div>
+      <div class="form-actions">
+        <button class="btn-primary" id="if-btn" onclick="payoutsView._saveInvoice('${i.id}')">Uložiť</button>
+        <button class="btn-ghost" onclick="modal.close()">Zrušiť</button>
+        <button class="btn-danger" style="margin-left:auto;" onclick="payoutsView._delete('${i.id}')">Vymazať</button>
+      </div>`);
+  },
+
+  async _delete(id) {
+    if (!confirm('Vymazať doklad?')) return;
+    const { error } = await db.client.from('invoices').delete().eq('id', id);
+    if (error) { alert('Chyba: ' + error.message); return; }
+    this._invoices = this._invoices.filter(i => i.id !== id);
+    modal.close();
+    this._render();
   },
 };
