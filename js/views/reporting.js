@@ -57,12 +57,31 @@ const reportingView = {
     const totalNet     = totalRevenue - totalCost - totalComm;
     const convRate     = closedDeals.length ? Math.round((closedDeals.length - lostDeals.length) / closedDeals.length * 100) : 0;
 
-    // Pipeline konverzie medzi stĺpcami
-    const COLS = ['new','assigned','contacted','qualified','offer_sent','won','payment_pending','paid','in_progress','completed'];
-    const colCounts = COLS.map(s => ({
-      status: s,
-      count:  deals.filter(d => d.status === s || (COLS.indexOf(d.status) > COLS.indexOf(s))).length,
-    }));
+    // Pipeline konverzie — % čo prešlo z jedného stavu do ďalšieho
+    const STAGES = ['new','contacted','qualified','offer_sent','won','paid','completed'];
+    const STAGE_LABELS = { new:'Nový', contacted:'Kontakt', qualified:'Kvalif.', offer_sent:'Ponuka', won:'Vyhraný', paid:'Zaplatený', completed:'Dokončený' };
+    const stageConv = STAGES.map((s, i) => {
+      const cnt = deals.filter(d => {
+        const idx = STAGES.indexOf(d.status);
+        return idx >= i || ['paid','in_progress','completed'].includes(d.status) && i <= 5;
+      }).length;
+      return { status: s, label: STAGE_LABELS[s], count: cnt };
+    });
+
+    // Časové metriky (dni medzi stavmi)
+    const avgTime = (fromField, toField) => {
+      const times = deals
+        .filter(d => d[fromField] && d[toField])
+        .map(d => (new Date(d[toField]) - new Date(d[fromField])) / 86400000);
+      if (!times.length) return null;
+      return Math.round(times.reduce((a,b)=>a+b,0) / times.length * 10) / 10;
+    };
+    const timeMetrics = [
+      { label: 'Nový → Kontakt',      days: avgTime('created_at',      'first_contact_at') },
+      { label: 'Kvalif. → Ponuka',    days: avgTime('qualified_at',    'offer_sent_at') },
+      { label: 'Vyhraný → Zaplatený', days: avgTime('won_at',          'paid_at') },
+      { label: 'Zaplatený → Dokonč.', days: avgTime('paid_at',         'completed_at') },
+    ].filter(m => m.days !== null);
 
     // Loss reasons
     const lossReasons = {};
@@ -201,6 +220,45 @@ const reportingView = {
               </div>`).join('')}
         </div>
       </div>
+
+      <!-- Konverzie pipeline -->
+      <div class="card" style="margin-bottom:14px;">
+        <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px;">
+          Pipeline konverzie
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:4px;height:80px;margin-bottom:8px;">
+          ${stageConv.map((s, i) => {
+            const max   = stageConv[0]?.count || 1;
+            const pct   = Math.round(s.count / max * 100);
+            const conv  = i > 0 && stageConv[i-1].count > 0
+              ? Math.round(s.count / stageConv[i-1].count * 100) : null;
+            const colors = ['#66668a','#a78bfa','#f0b85a','#d4943a','#3ecf8e','#10b981','#6366f1'];
+            return `
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">
+                ${conv !== null ? `<div style="font-size:9px;color:var(--muted);">${conv}%</div>` : '<div style="font-size:9px;"></div>'}
+                <div style="width:100%;background:${colors[i]};border-radius:4px 4px 0 0;height:${Math.max(8,pct*0.7)}px;"></div>
+                <div style="font-size:9px;color:var(--muted);text-align:center;">${s.label}</div>
+                <div style="font-size:10px;font-weight:700;">${s.count}</div>
+              </div>`;
+          }).join('')}
+        </div>
+      </div>
+
+      <!-- Časové metriky -->
+      ${timeMetrics.length > 0 ? `
+        <div class="card" style="margin-bottom:14px;">
+          <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px;">
+            Priemerné časy (dni)
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(${timeMetrics.length},1fr);gap:10px;">
+            ${timeMetrics.map(m => `
+              <div style="text-align:center;background:var(--inp);border:1px solid var(--brd);border-radius:8px;padding:10px;">
+                <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">${m.label}</div>
+                <div class="mono" style="font-size:20px;font-weight:700;color:var(--acc);">${m.days}</div>
+                <div style="font-size:11px;color:var(--muted);">dní</div>
+              </div>`).join('')}
+          </div>
+        </div>` : ''}
 
       <!-- Top produkty -->
       <div class="card" style="margin-bottom:14px;">
