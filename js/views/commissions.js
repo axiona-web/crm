@@ -4,24 +4,26 @@ const commissionsView = {
   _filter: 'all',
 
   render() {
-    const { commissions, contacts, deals } = app.state;
-    const cName = id => contacts.find(c => c.id === id)?.name || '—';
-    const dName = id => deals.find(d => d.id === id)?.title  || '—';
+    const { commissions, contacts } = app.state;
+    const orders = app.state.orders || [];
+    const opps   = app.state.opportunities || [];
 
-    const pending  = commissions.filter(c => c.status === 'pending').reduce((a,c)  => a + c.amount, 0);
-    const approved = commissions.filter(c => c.status === 'approved').reduce((a,c) => a + c.amount, 0);
-    const paid     = commissions.filter(c => c.status === 'paid').reduce((a,c)     => a + c.amount, 0);
+    const cName = id => contacts.find(c => c.id === id)?.name || '—';
+    const oName = id => {
+      const order = orders.find(o => o.id === id);
+      if (order?.product_name_snapshot) return order.product_name_snapshot;
+      const opp = opps.find(o => o.id === id);
+      if (opp?.title) return opp.title;
+      return '—';
+    };
+
+    const pending  = commissions.filter(c => c.status === 'pending').reduce((a,c)  => a + (c.amount||0), 0);
+    const approved = commissions.filter(c => c.status === 'approved').reduce((a,c) => a + (c.amount||0), 0);
+    const paid     = commissions.filter(c => c.status === 'paid').reduce((a,c)     => a + (c.amount||0), 0);
 
     const filtered = commissions
       .filter(c => this._filter === 'all' || c.status === this._filter)
-      .sort((a, b) => {
-        const pa = app.state.products?.find(p => p.id === a.productId);
-        const pb = app.state.products?.find(p => p.id === b.productId);
-        const ca = pa ? (pa.category + pa.subcategory + pa.name) : 'zzz';
-        const cb = pb ? (pb.category + pb.subcategory + pb.name) : 'zzz';
-        if (ca !== cb) return ca.localeCompare(cb, 'sk');
-        return new Date(b.createdAt) - new Date(a.createdAt);
-      });
+      .sort((a, b) => new Date(b.createdAt||b.created_at) - new Date(a.createdAt||a.created_at));
 
     return `
       <div class="view-head">
@@ -70,8 +72,9 @@ const commissionsView = {
                     </div>
                     <div style="display:flex;gap:12px;font-size:12px;color:var(--muted);flex-wrap:wrap;">
                       ${c.contactId ? `<span>👤 ${esc(cName(c.contactId))}</span>` : ''}
-                      ${c.dealId    ? `<span>📊 ${esc(dName(c.dealId))}</span>`    : ''}
-                      <span>📅 ${FMT(c.date)}</span>
+                      ${c.order_id  ? `<span>📦 ${esc(oName(c.order_id))}</span>`  : ''}
+                      ${c.dealId    ? `<span>🎯 ${esc(oName(c.dealId))}</span>`    : ''}
+                      <span>📅 ${FMT(c.date||c.createdAt)}</span>
                     </div>
                     ${c.notes ? `<div style="font-size:12px;color:var(--muted);margin-top:4px;">${esc(c.notes)}</div>` : ''}
                   </div>
@@ -99,8 +102,8 @@ const commissionsView = {
     const cOpts = app.state.contacts.map(x =>
       `<option value="${x.id}"${c.contactId===x.id?' selected':''}>${esc(x.name)}</option>`
     ).join('');
-    const dOpts = app.state.deals.map(x =>
-      `<option value="${x.id}"${c.dealId===x.id?' selected':''}>${esc(x.title)}</option>`
+    const oOpts = (app.state.opportunities||[]).map(x =>
+      `<option value="${x.id}"${(c.dealId||c.order_id)===x.id?' selected':''}>${esc(x.title)} — ${EUR(x.value||0)}</option>`
     ).join('');
 
     return `
@@ -110,8 +113,8 @@ const commissionsView = {
       </div>
       <div class="form-row"><label class="form-label">Kontakt</label>
         <select id="cm-contact"><option value="">— vybrať —</option>${cOpts}</select></div>
-      <div class="form-row"><label class="form-label">Lead / Obchod</label>
-        <select id="cm-deal"><option value="">— vybrať —</option>${dOpts}</select></div>
+      <div class="form-row"><label class="form-label">Príležitosť</label>
+        <select id="cm-deal"><option value="">— vybrať —</option>${oOpts}</select></div>
       <div class="form-grid-2">
         <div class="form-row"><label class="form-label">Stav</label>
           <select id="cm-status">
