@@ -165,15 +165,11 @@ const dashboardView = {
   },
 
   async afterRender() {
-    // Vždy načítaj čerstvé dáta pre dashboard
-    await app._loadData();
     this._destroyCharts();
-    // Re-render s novými dátami
+    await app._loadData();
+    // Znovu vykresli celý obsah s čerstvými dátami
     const content = document.getElementById('content');
-    if (content) {
-      const newHtml = this.render();
-      content.innerHTML = newHtml;
-    }
+    if (content) content.innerHTML = this.render();
     this._initFunnel();
     this._initDonut();
     this._initMonthly();
@@ -251,7 +247,10 @@ const dashboardView = {
   _initMonthly() {
     const canvas = document.getElementById('chart-monthly');
     if (!canvas || typeof Chart === 'undefined') return;
-    const { deals, orders } = app.state;
+    const leads  = app.state.leads  || [];
+    const opps   = app.state.opportunities || [];
+    const orders = app.state.orders || [];
+
     const months = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
@@ -260,6 +259,7 @@ const dashboardView = {
         label: d.toLocaleDateString('sk-SK', { month:'short', year:'2-digit' }),
       });
     }
+
     const chart = new Chart(canvas, {
       type: 'bar',
       data: {
@@ -267,18 +267,21 @@ const dashboardView = {
         datasets: [
           {
             label: 'Nové leady',
-            data: months.map(m => deals.filter(d => (d.createdAt||'').startsWith(m.key)).reduce((a,d)=>a+(d.value||0),0)),
+            data: months.map(m => leads.filter(l => (l.created_at||'').startsWith(m.key)).length),
             backgroundColor:'#5ba4f555', borderColor:'#5ba4f5', borderWidth:1, borderRadius:4,
+            yAxisID: 'yCount',
           },
           {
             label: 'Vyhraté',
-            data: months.map(m => deals.filter(d => d.status==='won' && (d.createdAt||'').startsWith(m.key)).reduce((a,d)=>a+(d.value||0),0)),
+            data: months.map(m => opps.filter(o => o.status==='won' && (o.won_at||o.created_at||'').startsWith(m.key)).reduce((a,o)=>a+(o.value||0),0)),
             backgroundColor:'#3ecf8e88', borderColor:'#3ecf8e', borderWidth:1, borderRadius:4,
+            yAxisID: 'yEur',
           },
           {
             label: 'Objednávky',
-            data: months.map(m => orders.filter(o => (o.createdAt||'').startsWith(m.key)).reduce((a,o)=>a+(o.value||0),0)),
+            data: months.map(m => orders.filter(o => (o.created_at||o.createdAt||'').startsWith(m.key)).reduce((a,o)=>a+(o.value||0),0)),
             backgroundColor:'#c084fc88', borderColor:'#c084fc', borderWidth:1, borderRadius:4,
+            yAxisID: 'yEur',
           },
         ],
       },
@@ -286,11 +289,16 @@ const dashboardView = {
         responsive: true,
         plugins: {
           legend: { labels: { color:'#66668a', font:{ size:11 } } },
-          tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${EUR(ctx.raw)}` } },
+          tooltip: { callbacks: {
+            label: ctx => ctx.datasetIndex === 0
+              ? ` ${ctx.dataset.label}: ${ctx.raw} ks`
+              : ` ${ctx.dataset.label}: ${EUR(ctx.raw)}`
+          }},
         },
         scales: {
-          x: { grid:{ color:'#24243a' }, ticks:{ color:'#66668a' }, border:{ color:'#24243a' } },
-          y: { grid:{ color:'#24243a' }, ticks:{ color:'#66668a', callback: v => EUR(v) }, border:{ color:'#24243a' } },
+          x:      { grid:{ color:'#24243a' }, ticks:{ color:'#66668a' }, border:{ color:'#24243a' } },
+          yEur:   { position:'left',  grid:{ color:'#24243a' }, ticks:{ color:'#66668a', callback: v => EUR(v) }, border:{ color:'#24243a' } },
+          yCount: { position:'right', grid:{ display:false }, ticks:{ color:'#5ba4f5', stepSize:1 }, border:{ color:'#24243a' } },
         },
       },
     });
