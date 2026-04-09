@@ -12,8 +12,6 @@ const VIEWS = {
   products:             productsView,
   calc:                 commissionCalcView,
   ai:                   aiView,
-  payouts:              payoutsView,
-  reporting:            reportingView,
   partners:             partnersView,
   profile:              profileView,
   clen_dashboard:       clenDashboardView,
