@@ -221,16 +221,16 @@ const pipelineView = {
 
     // Validácie pred presunom
     if (newStatus === 'contacted' && !deal.contact_id) {
-      alert('⚠️ Prirad kontakt pred posunutím na KONTAKTOVANÝ.'); return;
+      toast.error('Prirad kontakt pred posunutím na KONTAKTOVANÝ.'); return;
     }
     if (newStatus === 'offer_sent' && !deal.product_id) {
-      alert('⚠️ Prirad produkt pred odoslaním PONUKY.'); return;
+      toast.error('Prirad produkt pred odoslaním PONUKY.'); return;
     }
     if (newStatus === 'offer_sent' && !deal.sale_price_snapshot) {
-      alert('⚠️ Nastav cenu pred odoslaním PONUKY.'); return;
+      toast.error('Nastav cenu pred odoslaním PONUKY.'); return;
     }
     if (newStatus === 'won' && (!deal.contact_id || !deal.product_id || !deal.sale_price_snapshot)) {
-      alert('⚠️ Deal musí mať kontakt, produkt a cenu pred WON.'); return;
+      toast.error('Deal musí mať kontakt, produkt a cenu pred WON.'); return;
     }
 
     if (newStatus === 'paid') {
@@ -348,7 +348,7 @@ const pipelineView = {
     this._renderBoard();
 
     if (status === 'paid') {
-      setTimeout(() => alert('✓ Deal zaplatený! Transakcia, komisie a body boli vytvorené.'), 200);
+      setTimeout(() => toast.success('Deal zaplatený! Transakcia, komisie a body vytvorené.'), 200);
     }
   },
 
@@ -594,7 +594,7 @@ const pipelineView = {
     };
 
     const { data, error } = await db.client.from('deals').update(update).eq('id', id).select().single();
-    if (error) { alert('Chyba: ' + error.message); return; }
+    if (error) { toast.error('Chyba: ' + error.message); return; }
 
     this._deals = this._deals.map(d => d.id === id ? {...d,...update} : d);
     modal.close();
@@ -604,7 +604,7 @@ const pipelineView = {
   async _deleteDeal(id) {
     if (!confirm('Vymazať deal?')) return;
     const { error } = await db.client.from('deals').delete().eq('id', id);
-    if (error) { alert('Chyba: ' + error.message); return; }
+    if (error) { toast.error('Chyba: ' + error.message); return; }
     this._deals = this._deals.filter(d => d.id !== id);
     modal.close();
     this._renderBoard();
@@ -699,35 +699,79 @@ const pipelineView = {
     let   price   = Number(document.getElementById('nd-price')?.value) || p?.base_price || 0;
 
     // Načítaj benefit level kontaktu a uplatni zľavu automaticky
-    let discountPct  = 0;
-    let discountInfo = null;
-    if (contactId) {
+    let discountPct    = 0;
+    let discountAmount = 0;
+    let finalPrice     = price;
+    let discountSource = null;
+    let discountApply  = false;
+
+    if (contactId && pid) {
       try {
         const contact = app.state.contacts.find(c => c.id === contactId);
-        if (contact?.email) {
+        // Skontroluj či produkt má benefit_eligible
+        const productEligible = p?.benefit_eligible !== false; // default true
+        const productMaxDisc  = p?.max_discount_pct ?? 20;
+
+        if (contact?.email && productEligible) {
           const { data: profile } = await db.client
             .from('profiles')
-            .select('membership_levels(name,slug,color,discount_pct,applies_to_all_products:benefits(applies_to_all_products))')
+            .select('membership_levels(name,slug,color,discount_pct)')
             .eq('email', contact.email)
             .single();
           const level = profile?.membership_levels;
           if (level?.discount_pct > 0) {
-            discountPct  = level.discount_pct;
-            discountInfo = { level: level.name, color: level.color, pct: discountPct };
-            const discounted = round2(price * (1 - discountPct / 100));
-            if (price > 0) {
-              const confirm_msg = `🎁 ${level.name} zľava ${discountPct}%\n\nPôvodná cena: ${price} €\nCena po zľave: ${discounted} €\n\nAplikovať zľavu?`;
-              if (confirm(confirm_msg)) {
-                price = discounted;
-              }
-            }
+            // Aplikuj max zľavu podľa produktu
+            discountPct    = Math.min(level.discount_pct, productMaxDisc);
+            discountAmount = round2(price * discountPct / 100);
+            finalPrice     = round2(price - discountAmount);
+            discountSource = `${level.name} (${level.slug})`;
+
+            // Modal potvrdenie namiesto confirm()
+            discountApply = await new Promise(resolve => {
+              modal.open('🎁 Členská zľava', `
+                <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">
+                  Kontakt má aktívnu člensku úroveň.
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+                  <div style="background:var(--inp);border:1px solid var(--brd);border-radius:8px;padding:10px;text-align:center;">
+                    <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Pôvodná cena</div>
+                    <div class="mono" style="font-size:18px;font-weight:700;text-decoration:line-through;color:var(--muted);">${EUR(price)}</div>
+                  </div>
+                  <div style="background:linear-gradient(135deg,#0a1f12,var(--card));border:1px solid rgba(62,207,142,0.3);border-radius:8px;padding:10px;text-align:center;">
+                    <div style="font-size:10px;color:var(--green);margin-bottom:3px;">Po zľave ${discountPct}%</div>
+                    <div class="mono" style="font-size:18px;font-weight:700;color:var(--green);">${EUR(finalPrice)}</div>
+                  </div>
+                </div>
+                <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
+                  Úroveň: <strong style="color:${level.color};">${level.name}</strong>
+                  · Zľava: <strong>${discountPct}%</strong>
+                  · Ušetrí: <strong>${EUR(discountAmount)}</strong>
+                </div>
+                <div class="form-actions">
+                  <button class="btn-primary" style="background:var(--green);" onclick="modal.close();window._discountChoice=true;">✓ Aplikovať zľavu</button>
+                  <button class="btn-ghost" onclick="modal.close();window._discountChoice=false;">Bez zľavy</button>
+                </div>`);
+              // Počkaj na klik
+              const check = setInterval(() => {
+                if (window._discountChoice !== undefined) {
+                  clearInterval(check);
+                  const v = window._discountChoice;
+                  delete window._discountChoice;
+                  resolve(v);
+                }
+              }, 100);
+              setTimeout(() => { clearInterval(check); resolve(false); }, 10000);
+            });
           }
         }
       } catch(e) { console.warn('Benefit check failed:', e.message); }
     }
 
+    const effectivePrice = discountApply ? finalPrice : price;
+
     try {
       const basePrice = p?.base_price || 0;
+      const commAmount = round2(effectivePrice * pct / 100);
       const { data, error } = await db.client.from('deals').insert({
         title,
         contact_id:                  contactId,
@@ -738,16 +782,22 @@ const pipelineView = {
         description:                 document.getElementById('nd-desc')?.value   || null,
         status:                      'new',
         requires_approval:           true,
-        sale_price_snapshot:         price,
+        // Ceny
+        base_price:                  price,
+        discount_percent:            discountApply ? discountPct    : 0,
+        discount_amount:             discountApply ? discountAmount : 0,
+        final_price:                 effectivePrice,
+        discount_source:             discountApply ? discountSource : null,
+        discount_applied_by:         discountApply ? uid            : null,
+        discount_applied_at:         discountApply ? new Date().toISOString() : null,
+        // Snapshoty
+        sale_price_snapshot:         effectivePrice,
         cost_snapshot:               p?.cost_price || 0,
         commission_percent_snapshot: pct,
-        commission_amount_snapshot:  round2(price * pct / 100),
-        net_profit_snapshot:         round2(price - (p?.cost_price||0) - (price * pct / 100)),
+        commission_amount_snapshot:  commAmount,
+        net_profit_snapshot:         round2(effectivePrice - (p?.cost_price||0) - commAmount),
         product_name_snapshot:       p?.name || null,
-        notes: discountInfo
-          ? `Aplikovaná ${discountInfo.level} zľava ${discountInfo.pct}% (pôvodná cena: ${basePrice} €)`
-          : null,
-      }).select('*, contacts(name,email), products(name,category,base_price,commission_percent,commission_enabled)')
+      }).select('*, contacts(name,email), products(name,category,base_price,commission_percent,commission_enabled,benefit_eligible,max_discount_pct)')
       .single();
       if (error) throw error;
 
@@ -755,7 +805,7 @@ const pipelineView = {
       modal.close();
       this._renderBoard();
     } catch(e) {
-      alert('Chyba: ' + e.message);
+      toast.error('Chyba: ' + e.message);
       if (btn) { btn.disabled = false; btn.textContent = 'Vytvoriť deal'; }
     }
   },

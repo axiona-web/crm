@@ -56,16 +56,12 @@ const reportingView = {
     const totalMargin  = totalRevenue - totalCost;
     const totalNet     = totalRevenue - totalCost - totalComm;
 
-    // Zisk po benefitoch — zľava sa prejaví v nižšej cene (sale_price_snapshot už obsahuje zľavu)
-    // Vypočítaj koľko zliav bolo uplatnených (z notes)
-    const discountDeals = paidDeals.filter(d => d.notes?.includes('zľava'));
-    const totalDiscountSaved = discountDeals.reduce((a,d) => {
-      const match = d.notes?.match(/pôvodná cena: ([\d.]+)/);
-      const orig  = match ? parseFloat(match[1]) : 0;
-      return a + Math.max(0, orig - (d.sale_price_snapshot||0));
-    }, 0);
+    // Benefit zľavy — zo štruktúrovaných polí
+    const discountDeals      = paidDeals.filter(d => (d.discount_amount||0) > 0);
+    const totalDiscounts     = discountDeals.reduce((a,d) => a+(d.discount_amount||0), 0);
+    const profitAfterBenefits = totalNet - totalDiscounts;
 
-    const convRate     = closedDeals.length ? Math.round((closedDeals.length - lostDeals.length) / closedDeals.length * 100) : 0;
+    const convRate = closedDeals.length ? Math.round((closedDeals.length - lostDeals.length) / closedDeals.length * 100) : 0;
 
     // Pipeline konverzie — % čo prešlo z jedného stavu do ďalšieho
     const STAGES = ['new','contacted','qualified','offer_sent','won','paid','completed'];
@@ -174,15 +170,15 @@ const reportingView = {
           <div class="mono" style="font-size:16px;font-weight:700;color:var(--green);">${fmt(totalNet)}</div>
           <div style="font-size:11px;color:var(--muted);">${totalRevenue>0?Math.round(totalNet/totalRevenue*100):0}%</div>
         </div>
-        <div class="card" style="text-align:center;${totalDiscountSaved>0?'border-color:rgba(167,139,250,0.3);':''}">
+        <div class="card" style="text-align:center;${totalDiscounts>0?'border-color:rgba(167,139,250,0.3);':''}">
           <div style="font-size:10px;color:var(--purple);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Benefit zľavy</div>
-          <div class="mono" style="font-size:16px;font-weight:700;color:var(--purple);">${fmt(totalDiscountSaved)}</div>
+          <div class="mono" style="font-size:16px;font-weight:700;color:var(--purple);">-${fmt(totalDiscounts)}</div>
           <div style="font-size:11px;color:var(--muted);">${discountDeals.length} dealov</div>
         </div>
-        <div class="card" style="text-align:center;">
-          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Win rate</div>
-          <div class="mono" style="font-size:16px;font-weight:700;color:${convRate>=50?'var(--green)':'var(--acc)'};">${convRate}%</div>
-          <div style="font-size:11px;color:var(--muted);">${closedDeals.length-lostDeals.length}/${closedDeals.length}</div>
+        <div class="card" style="text-align:center;background:linear-gradient(135deg,#0a1a1f,var(--card));border-color:rgba(91,164,245,0.3);">
+          <div style="font-size:10px;color:var(--blue);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Profit po zľavách</div>
+          <div class="mono" style="font-size:16px;font-weight:700;color:${profitAfterBenefits>=0?'var(--blue)':'var(--red)'};">${fmt(profitAfterBenefits)}</div>
+          <div style="font-size:11px;color:var(--muted);">${totalRevenue>0?Math.round(profitAfterBenefits/totalRevenue*100):0}%</div>
         </div>
       </div>
 
