@@ -103,17 +103,26 @@ const ordersView = {
 
   _form(o, isNew) {
     const cOpts = app.state.contacts.map(c =>
-      `<option value="${c.id}"${o.contactId===c.id?' selected':''}>${esc(c.name)}</option>`
+      `<option value="${c.id}"${(o.contactId||o.contact_id)===c.id?' selected':''}>${esc(c.name)}</option>`
     ).join('');
-    const dOpts = app.state.deals.map(d =>
-      `<option value="${d.id}"${o.dealId===d.id?' selected':''}>${esc(d.title)}</option>`
+
+    // Použi opportunities namiesto starých deals
+    const opps = app.state.opportunities || [];
+    const oppId = o.opportunity_id || o.dealId || null;
+    const oppOpts = opps.map(op =>
+      `<option value="${op.id}"${oppId===op.id?' selected':''}>${esc(op.title)} — ${EUR(op.value||0)}</option>`
+    ).join('');
+
+    const prodId = o.productId || o.product_id || null;
+    const prodOpts = (app.state.products||[]).filter(p=>p.active||p.is_active).map(p=>
+      `<option value="${p.id}"${prodId===p.id?' selected':''}>${esc(p.name)} — ${EUR(p.base_price||p.price||0)}</option>`
     ).join('');
 
     return `
       <div class="form-row"><label class="form-label">Kontakt</label>
         <select id="of-contact"><option value="">— vybrať —</option>${cOpts}</select></div>
-      <div class="form-row"><label class="form-label">Lead / Obchod</label>
-        <select id="of-deal"><option value="">— vybrať —</option>${dOpts}</select></div>
+      <div class="form-row"><label class="form-label">Príležitosť</label>
+        <select id="of-opp"><option value="">— vybrať —</option>${oppOpts}</select></div>
       <div class="form-row"><label class="form-label">Stav</label>
         <select id="of-status">
           ${Object.entries(ORDER_STATUS_LABELS).map(([k,v]) =>
@@ -122,11 +131,8 @@ const ordersView = {
         </select>
       </div>
       <div class="form-row"><label class="form-label">Produkt</label>
-        <select id="of-product">
-          <option value="">— vybrať produkt —</option>
-          ${(app.state.products||[]).filter(p=>p.active).map(p=>
-            `<option value="${p.id}"${o.productId===p.id?' selected':''}>${esc(p.name)} — ${EUR(p.price)}</option>`
-          ).join('')}
+        <select id="of-product" onchange="ordersView._onProduct(this.value)">
+          <option value="">— vybrať produkt —</option>${prodOpts}
         </select>
       </div>
       <div class="form-row"><label class="form-label">Hodnota (€) *</label>
@@ -139,6 +145,13 @@ const ordersView = {
         <button class="btn-ghost" onclick="modal.close()">Zrušiť</button>
         ${!isNew ? `<button class="btn-danger" style="margin-left:auto;" onclick="ordersView.delete('${o.id}')">Vymazať</button>` : ''}
       </div>`;
+  },
+
+  _onProduct(productId) {
+    const p = (app.state.products||[]).find(x => x.id === productId);
+    if (!p) return;
+    const v = document.getElementById('of-value');
+    if (v && !v.value) v.value = p.base_price || p.price || '';
   },
 
   openAdd()    { modal.open('Nová objednávka', this._form({ contactId:'', dealId:'', status:'pending_payment', value:'', notes:'' }, true)); },
@@ -165,15 +178,16 @@ const ordersView = {
     if (btn) { btn.disabled = true; btn.textContent = 'Ukladám...'; }
 
     const obj = {
-      contactId:  this._val('of-contact') || null,
-      dealId:     this._val('of-deal')    || null,
-      productId:  this._val('of-product') || null,
-      status:     this._val('of-status')  || 'pending_payment',
-      value:      Number(value) || 0,
-      notes:      this._val('of-notes'),
-      owner_id:   app._currentUserId(),
-      product_id: this._val('of-product') || null,
-      contact_id: this._val('of-contact') || null,
+      contactId:      this._val('of-contact') || null,
+      contact_id:     this._val('of-contact') || null,
+      dealId:         this._val('of-opp')     || null,
+      opportunity_id: this._val('of-opp')     || null,
+      productId:      this._val('of-product') || null,
+      product_id:     this._val('of-product') || null,
+      status:         this._val('of-status')  || 'pending_payment',
+      value:          Number(value) || 0,
+      notes:          this._val('of-notes'),
+      owner_id:       app._currentUserId(),
     };
 
     try {
