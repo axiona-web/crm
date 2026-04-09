@@ -75,16 +75,18 @@ function orderFromRow(r) {
 
 function orderToRow(o, ownerId) {
   return {
-    deal_id:        o.dealId         || null,
-    opportunity_id: o.opportunity_id || null,
-    contact_id:     o.contactId      || o.contact_id  || null,
-    owner_id:       o.owner_id       || ownerId,
-    status:         o.status         || 'pending_payment',
-    value:          Number(o.value)  || 0,
-    currency:       o.currency       || 'EUR',
-    notes:          o.notes          || null,
-    product_id:     o.productId      || o.product_id  || null,
-    updated_at:     new Date().toISOString(),
+    deal_id:           o.dealId          || null,
+    opportunity_id:    o.opportunity_id  || null,
+    contact_id:        o.contactId       || o.contact_id  || null,
+    owner_id:          o.owner_id        || ownerId,
+    status:            o.status          || 'pending_payment',
+    value:             Number(o.value)   || 0,
+    currency:          o.currency        || 'EUR',
+    notes:             o.notes           || null,
+    product_id:        o.productId       || o.product_id  || null,
+    payment_method:    o.payment_method    || null,
+    payment_reference: o.payment_reference || null,
+    updated_at:        new Date().toISOString(),
   };
 }
 
