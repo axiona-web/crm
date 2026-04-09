@@ -112,10 +112,11 @@ const NAV_BY_ROLE = {
     { id: 'profile',     icon: '👤', label: 'Môj profil'   },
   ],
   partner: [
-    { id: 'dashboard',   icon: '⊞', label: 'Dashboard'    },
-    { id: 'members',     icon: '👥', label: 'Moji klienti' },
-    { id: 'orders',      icon: '🔄', label: 'Transakcie'   },
-    { id: 'profile',     icon: '👤', label: 'Môj profil'   },
+    { id: 'partner_dashboard', icon: '⊞', label: 'Môj prehľad'  },
+    { id: 'members',           icon: '👥', label: 'Moji klienti' },
+    { id: 'orders',            icon: '🔄', label: 'Transakcie'   },
+    { id: 'payouts',           icon: '🧾', label: 'Fakturácia'   },
+    { id: 'profile',           icon: '👤', label: 'Môj profil'   },
   ],
   clen: [
     { id: 'clen_dashboard', icon: '⊞', label: 'Prehľad'    },

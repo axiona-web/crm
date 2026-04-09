@@ -15,6 +15,7 @@ const VIEWS = {
   partners:             partnersView,
   profile:              profileView,
   clen_dashboard:       clenDashboardView,
+  partner_dashboard:    partnerDashboardView,
   obchodnik_dashboard:  obchodnikDashboardView,
 };
 
@@ -40,9 +41,10 @@ const app = {
 
   async boot() {
     const role = previewRole.effective();
-    if (role === 'clen')       this.state.view = 'clen_dashboard';
+    if (role === 'clen')           this.state.view = 'clen_dashboard';
     else if (role === 'obchodnik') this.state.view = 'obchodnik_dashboard';
-    else                       this.state.view = 'dashboard';
+    else if (role === 'partner')   this.state.view = 'partner_dashboard';
+    else                           this.state.view = 'dashboard';
     document.getElementById('root').innerHTML = this._appShell();
     modal.init();
     if (role !== 'clen') await this._loadData();
