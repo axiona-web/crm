@@ -234,33 +234,91 @@ const pipelineView = {
     }
 
     if (newStatus === 'paid') {
-      if (!await this._confirmPaid(deal)) return;
+      await this._askPaid(id, deal);
+      return;
     }
     if (newStatus === 'cancelled') {
-      const reason = prompt('Dôvod zrušenia:');
-      if (reason === null) return;
-      if (!reason.trim()) { alert('Zadaj dôvod zrušenia.'); return; }
-      await this._updateStatus(id, newStatus, { cancel_reason: reason.trim() });
+      await this._askReason(id, 'cancelled');
       return;
     }
     if (newStatus === 'lost') {
-      const reason = prompt('Dôvod straty:');
-      if (reason === null) return;
-      if (!reason.trim()) { alert('Zadaj dôvod straty.'); return; }
-      await this._updateStatus(id, newStatus, { loss_reason: reason.trim() });
+      await this._askReason(id, 'lost');
       return;
     }
 
     await this._updateStatus(id, newStatus);
   },
 
-  async _confirmPaid(deal) {
-    const method = prompt('Spôsob platby:\n1 = Bankový prevod\n2 = Karta\n3 = Hotovosť\n4 = Faktúra\n\nZadaj číslo:', '1');
-    if (method === null) return false;
-    const methods = { '1':'bank_transfer','2':'card','3':'cash','4':'invoice' };
-    const ref = prompt('Referencia platby (č. faktúry, VS...):', '') || '';
-    deal._pendingPayment = { method: methods[method]||'bank_transfer', ref };
-    return true;
+  _askPaid(id, deal) {
+    return new Promise(resolve => {
+      modal.open('💳 Potvrdiť platbu', `
+        <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">
+          Deal: <strong>${esc(deal.title||'—')}</strong> — ${EUR(deal.sale_price_snapshot||0)}
+        </div>
+        <div class="form-row"><label class="form-label">Spôsob platby *</label>
+          <select id="pay-method">
+            <option value="">— vybrať —</option>
+            <option value="bank_transfer">🏦 Bankový prevod</option>
+            <option value="card">💳 Karta</option>
+            <option value="cash">💵 Hotovosť</option>
+            <option value="invoice">🧾 Faktúra</option>
+          </select></div>
+        <div class="form-row"><label class="form-label">Referencia platby *</label>
+          <input id="pay-ref" placeholder="č. faktúry, VS, ID transakcie..." /></div>
+        <div class="form-actions">
+          <button class="btn-primary" onclick="pipelineView._submitPaid('${id}')">✓ Potvrdiť platbu</button>
+          <button class="btn-ghost" onclick="modal.close()">Zrušiť</button>
+        </div>`);
+      resolve();
+    });
+  },
+
+  async _submitPaid(id) {
+    const method = document.getElementById('pay-method')?.value;
+    const ref    = document.getElementById('pay-ref')?.value?.trim();
+    if (!method) { alert('Vyber spôsob platby.'); return; }
+    if (!ref)    { alert('Zadaj referenciu platby.'); return; }
+    modal.close();
+    await this._updateStatus(id, 'paid', { payment_method: method, payment_reference: ref });
+  },
+
+  _askReason(id, type) {
+    const isLost = type === 'lost';
+    const lossReasons   = ['Cena','Nezáujem','Konkurencia','Bez odpovede','Nesprávny produkt','Odložené','Iné'];
+    const cancelReasons = ['Duplicitný deal','Omyl pri vytvorení','Klient stiahol záujem','Interné zrušenie','Storno po dohode','Iné'];
+    const reasons = isLost ? lossReasons : cancelReasons;
+    const deal    = this._deals.find(d => d.id === id);
+
+    return new Promise(resolve => {
+      modal.open(isLost ? '❌ Dôvod straty' : '🚫 Dôvod zrušenia', `
+        <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">
+          Deal: <strong>${esc(deal?.title||'—')}</strong>
+        </div>
+        <div class="form-row"><label class="form-label">${isLost ? 'Dôvod straty' : 'Dôvod zrušenia'} *</label>
+          <select id="reason-select">
+            <option value="">— vybrať —</option>
+            ${reasons.map(r=>`<option value="${r}">${r}</option>`).join('')}
+          </select></div>
+        <div class="form-row"><label class="form-label">Poznámka (voliteľné)</label>
+          <textarea id="reason-note" style="min-height:55px;resize:vertical;" placeholder="Detaily..."></textarea></div>
+        <div class="form-actions">
+          <button class="btn-primary" style="background:var(--red);" onclick="pipelineView._submitReason('${id}','${type}')">
+            ${isLost ? '❌ Označiť ako stratený' : '🚫 Zrušiť deal'}
+          </button>
+          <button class="btn-ghost" onclick="modal.close()">Späť</button>
+        </div>`);
+      resolve();
+    });
+  },
+
+  async _submitReason(id, type) {
+    const reason = document.getElementById('reason-select')?.value;
+    const note   = document.getElementById('reason-note')?.value?.trim();
+    if (!reason) { alert('Vyber dôvod.'); return; }
+    const full   = note ? `${reason} — ${note}` : reason;
+    modal.close();
+    const extra  = type === 'lost' ? { loss_reason: full } : { cancel_reason: full };
+    await this._updateStatus(id, type, extra);
   },
 
   async _updateStatus(id, status, extra = {}) {
