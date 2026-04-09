@@ -359,8 +359,12 @@ const pipelineView = {
       if (l) l.status = 'qualified';
 
       modal.close();
-      await this._load();
-      this._switchTab('opps');
+      // Resetuj loaded stav pipeline a prepni na opps tab
+      pipelineView._leads = [];
+      pipelineView._opps  = [];
+      await pipelineView._load();
+      pipelineView._filter = 'all';
+      pipelineView._switchTab('opps');
     } catch(e) {
       console.error('Convert error:', e);
       alert('Chyba pri vytváraní príležitosti:\n' + e.message);
