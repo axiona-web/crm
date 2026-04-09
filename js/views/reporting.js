@@ -7,7 +7,10 @@ const reportingView = {
     return `
       <div class="view-head">
         <h2>📈 Reporting</h2>
-        <button class="btn-ghost" style="font-size:12px;" onclick="reportingView.afterRender()">↻ Obnoviť</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-ghost" style="font-size:12px;" onclick="reportingView.afterRender()">↻ Obnoviť</button>
+          <button class="btn-ghost" style="font-size:12px;" onclick="reportingView.exportXLSX()">⬇ Export XLSX</button>
+        </div>
       </div>
       <div id="report-wrap">
         <div style="color:var(--muted);font-size:13px;padding:20px 0;">Načítavam...</div>
@@ -248,5 +251,78 @@ const reportingView = {
           </div>
         </div>
       </div>`;
+  },
+
+  exportXLSX() {
+    if (!this._data) { alert('Najprv načítaj dáta.'); return; }
+    const { orders, comms, leads, products, contacts } = this._data;
+
+    // Pomocná funkcia na konverziu poľa objektov do CSV-like štruktúry
+    const toRows = (headers, data) => [headers, ...data];
+
+    // 3 sheety: Objednávky, Provízie, Pipeline
+    const ordersData = toRows(
+      ['Produkt','Dátum','Stav','Hodnota €','Marža €','Comm %','Comm €'],
+      orders.map(o => {
+        const p = products.find(x=>x.id===o.product_id);
+        return [
+          o.product_name_snapshot || p?.name || '—',
+          o.created_at?.slice(0,10) || '—',
+          o.status,
+          o.value || 0,
+          o.gross_margin_snapshot || (p ? (o.value||0)-(p.cost_price||0) : ''),
+          o.commission_percent_snapshot || '',
+          o.commission_amount_snapshot  || '',
+        ];
+      })
+    );
+
+    const commsData = toRows(
+      ['Obchodník','Suma €','%','Stav','Dátum','Vyplatené'],
+      comms.map(c => [
+        c.profiles?.name || c.profiles?.email || '—',
+        c.amount || 0,
+        c.rate || '',
+        c.status,
+        c.date?.slice(0,10) || c.created_at?.slice(0,10) || '—',
+        c.paid_at?.slice(0,10) || '—',
+      ])
+    );
+
+    const leadsData = toRows(
+      ['Lead','Stav','Hodnota €','Kontakt','Produkt','Zdroj','Uzatvorenie'],
+      leads.map(d => {
+        const c = contacts.find(x=>x.id===d.contactId||x.id===d.contact_id);
+        const p = products.find(x=>x.id===d.productId||x.id===d.product_id);
+        return [
+          d.title || '—',
+          d.status,
+          d.value || 0,
+          c?.name || '—',
+          p?.name || '—',
+          d.source || '—',
+          d.expectedClose || d.expected_close || '—',
+        ];
+      })
+    );
+
+    // Vytvor workbook pomocou SheetJS cez CDN
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    script.onload = () => {
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ordersData),  'Objednávky');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(commsData),   'Provízie');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(leadsData),   'Pipeline');
+
+      const date = new Date().toISOString().slice(0,10);
+      XLSX.writeFile(wb, `axiona-report-${date}.xlsx`);
+    };
+    // Ak je SheetJS už načítaný
+    if (typeof XLSX !== 'undefined') {
+      script.onload();
+    } else {
+      document.head.appendChild(script);
+    }
   },
 };

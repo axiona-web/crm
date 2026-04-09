@@ -122,20 +122,23 @@ PRODUKT:
       const reply = data.content?.find(b => b.type === 'text')?.text || data.error?.message || 'Chyba.';
 
       if (resultEl) {
-        resultEl.style.background  = 'var(--surf)';
+        resultEl.style.background   = 'var(--surf)';
         resultEl.style.borderRadius = '8px';
         resultEl.style.padding      = '12px';
         resultEl.style.border       = '1px solid var(--brd)';
         resultEl.textContent        = reply;
       }
 
-      // Ponúkni uloženie do poznámok
+      // Uložiť do poznámok — vždy len jedno tlačidlo (nahradí existujúce)
+      const existing = document.getElementById('ai-lead-save-btn');
+      if (existing) existing.remove();
       const saveBtn = document.createElement('button');
+      saveBtn.id          = 'ai-lead-save-btn';
       saveBtn.className   = 'btn-ghost';
       saveBtn.style.cssText = 'font-size:11px;margin-top:10px;display:block;';
       saveBtn.textContent = '💾 Uložiť do poznámok leadu';
       saveBtn.onclick     = () => aiLead._saveToNotes(dealId, reply);
-      if (resultEl.parentNode) resultEl.parentNode.appendChild(saveBtn);
+      resultEl?.parentNode?.appendChild(saveBtn);
 
     } catch(e) {
       if (resultEl) resultEl.textContent = 'Chyba pripojenia: ' + e.message;
