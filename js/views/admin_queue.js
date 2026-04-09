@@ -29,7 +29,7 @@ const adminQueueView = {
       { data: newLeads },
       { data: slaLeads },
     ] = await Promise.all([
-      db.client.from('commissions').select('*, profiles!commissions_owner_id_fkey(name,email)').eq('status','pending').order('created_at'),
+      db.client.from('commissions').select('*, profiles(name,email)').eq('status','pending').order('created_at'),
       db.client.from('point_transactions').select('*, contacts(name,email)').eq('status','pending').order('created_at'),
       db.client.from('orders').select('*, contacts(name), products(name)').eq('status','paid').is('commission_amount_snapshot', null).order('paid_at'),
       db.client.from('leads').select('*, contacts(name,email), products(name)').eq('status','new').eq('requires_approval', true).is('approved_at', null).order('created_at'),
