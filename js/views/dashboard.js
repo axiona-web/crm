@@ -11,39 +11,72 @@ const dashboardView = {
   render() {
     this._destroyCharts();
     const { contacts, deals, orders, commissions } = app.state;
+    const leads = app.state.leads || [];
+    const opps  = app.state.opportunities || [];
 
-    const activeDeals  = deals.filter(d => DEAL_ACTIVE.includes(d.status));
-    const pipeVal      = activeDeals.reduce((a, d) => a + (d.value || 0), 0);
-    const wonDeals     = deals.filter(d => d.status === 'won');
-    const lostDeals    = deals.filter(d => d.status === 'lost');
-    const wonVal       = wonDeals.reduce((a, d) => a + (d.value || 0), 0);
-    const winRate      = (wonDeals.length + lostDeals.length) > 0
-      ? Math.round(wonDeals.length / (wonDeals.length + lostDeals.length) * 100) : 0;
-    const pendComm     = commissions.filter(c => c.status === 'pending').reduce((a, c) => a + c.amount, 0);
-    const approvedComm = commissions.filter(c => c.status === 'approved').reduce((a, c) => a + c.amount, 0);
-    const orderVal     = orders.filter(o => o.status === 'completed').reduce((a, o) => a + (o.value || 0), 0);
+    // Pipeline z opportunities (nový model)
+    const activeOpps   = opps.filter(o => ['open','negotiation'].includes(o.status));
+    const wonOpps      = opps.filter(o => o.status === 'won');
+    const lostOpps     = opps.filter(o => o.status === 'lost');
+    const pipeVal      = activeOpps.reduce((a, o) => a + (o.value || 0), 0);
+    const wonVal       = wonOpps.reduce((a, o) => a + (o.value || 0), 0);
+    const winRate      = (wonOpps.length + lostOpps.length) > 0
+      ? Math.round(wonOpps.length / (wonOpps.length + lostOpps.length) * 100) : 0;
 
-    // Top členovia podľa hodnoty obchodov
+    // Leady
+    const newLeads     = leads.filter(l => l.status === 'new' && !l.approved_at).length;
+    const activeLeads  = leads.filter(l => !['lost','cancelled'].includes(l.status)).length;
+
+    const pendComm     = commissions.filter(c => c.status === 'pending').reduce((a, c) => a + (c.amount||0), 0);
+    const approvedComm = commissions.filter(c => c.status === 'approved').reduce((a, c) => a + (c.amount||0), 0);
+    const orderVal     = orders.filter(o => ['paid','in_progress','completed'].includes(o.status)).reduce((a, o) => a + (o.value || 0), 0);
+    const completedVal = orders.filter(o => o.status === 'completed').reduce((a, o) => a + (o.value || 0), 0);
+
+    // Top produkty podľa objednávok
+    const prodCount = {};
+    orders.forEach(o => {
+      const name = o.product_name_snapshot || '—';
+      prodCount[name] = (prodCount[name] || 0) + 1;
+    });
+    const topProds = Object.entries(prodCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+    // Top členovia podľa hodnoty opportunities
     const memberTotals = {};
-    deals.forEach(d => {
-      if (!d.contactId) return;
-      memberTotals[d.contactId] = (memberTotals[d.contactId] || 0) + (d.value || 0);
+    opps.forEach(o => {
+      if (!o.contact_id) return;
+      memberTotals[o.contact_id] = (memberTotals[o.contact_id] || 0) + (o.value || 0);
     });
     const topMembers = Object.entries(memberTotals)
       .sort((a, b) => b[1] - a[1]).slice(0, 5)
       .map(([id, val]) => ({
         name:  contacts.find(c => c.id === id)?.name || '—',
-        type:  contacts.find(c => c.id === id)?.type || '',
         value: val,
-        deals: deals.filter(d => d.contactId === id).length,
+        opps:  opps.filter(o => o.contact_id === id).length,
       }));
     const maxMember = topMembers[0]?.value || 1;
 
-    const typeColors = { Člen:'#5ba4f5', Firma:'#d4943a', Iné:'#66668a' };
+    // Mesačný obrat (posledných 6 mesiacov)
+    const now = new Date();
+    const monthlyData = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const m = d.getMonth(), y = d.getFullYear();
+      const mo = orders.filter(o => {
+        const od = new Date(o.created_at);
+        return od.getMonth() === m && od.getFullYear() === y &&
+          ['paid','in_progress','completed'].includes(o.status);
+      });
+      monthlyData.push({
+        label: d.toLocaleDateString('sk-SK', { month: 'short' }),
+        value: mo.reduce((a, o) => a + (o.value || 0), 0),
+        count: mo.length,
+      });
+    }
 
     return `
       <div class="view-head"><h2>Dashboard</h2>
         <button class="btn-ghost" style="font-size:12px;" onclick="app._loadData().then(()=>app.renderContent())">↻ Obnoviť</button>
+        ${newLeads > 0 ? `<span class="badge" style="background:rgba(212,148,58,0.15);color:var(--acc);border:1px solid var(--acc-brd);">⏳ ${newLeads} leadov čaká</span>` : ''}
       </div>
 
       <!-- KPI -->
@@ -51,24 +84,24 @@ const dashboardView = {
         <div class="card kpi-main">
           <div class="kpi-label">Aktívna pipeline</div>
           <div class="kpi-big mono" style="color:var(--acc);">${EUR(pipeVal)}</div>
-          <div class="kpi-sub">${activeDeals.length} aktívnych leadov</div>
-          <div class="kpi-sub" style="margin-top:4px;">${contacts.length} členov · ${deals.length} leadov celkom</div>
+          <div class="kpi-sub">${activeOpps.length} príležitostí · ${activeLeads} leadov</div>
+          <div class="kpi-sub" style="margin-top:4px;">${contacts.length} členov celkom</div>
         </div>
         <div class="kpi-side">
           <div class="card kpi-small">
-            <div class="kpi-label">Vyhraté obchody</div>
+            <div class="kpi-label">Vyhraté príležitosti</div>
             <div class="kpi-med mono" style="color:var(--green);">${EUR(wonVal)}</div>
-            <div class="kpi-sub">${wonDeals.length} obchodov</div>
+            <div class="kpi-sub">${wonOpps.length} uzatvorených</div>
           </div>
           <div class="card kpi-small">
             <div class="kpi-label">Win rate</div>
             <div class="kpi-med mono" style="color:${winRate>=50?'var(--green)':'var(--acc)'};">${winRate}%</div>
-            <div class="kpi-sub">${wonDeals.length} z ${wonDeals.length+lostDeals.length}</div>
+            <div class="kpi-sub">${wonOpps.length} z ${wonOpps.length+lostOpps.length}</div>
           </div>
           <div class="card kpi-small">
-            <div class="kpi-label">Obrat (dokončené)</div>
+            <div class="kpi-label">Obrat (zaplatené)</div>
             <div class="kpi-med mono" style="color:var(--purple);">${EUR(orderVal)}</div>
-            <div class="kpi-sub">${orders.filter(o=>o.status==='completed').length} objednávok</div>
+            <div class="kpi-sub">Dokončené: ${EUR(completedVal)}</div>
           </div>
           <div class="card kpi-small">
             <div class="kpi-label">Čakajúce provízie</div>
@@ -111,7 +144,7 @@ const dashboardView = {
 
       <!-- Top členovia -->
       <div class="card">
-        <div class="chart-title">Top členovia podľa hodnoty leadov</div>
+        <div class="chart-title">Top členovia podľa hodnoty príležitostí</div>
         ${topMembers.length === 0
           ? '<div style="color:var(--muted);font-size:13px;padding:12px 0;">Žiadne dáta</div>'
           : topMembers.map((m, i) => `
@@ -120,13 +153,12 @@ const dashboardView = {
                 <div style="display:flex;align-items:center;gap:8px;">
                   <span style="font-size:11px;color:var(--muted);font-weight:600;width:16px;">#${i+1}</span>
                   <span style="font-size:13px;font-weight:600;">${esc(m.name)}</span>
-                  ${m.type ? `<span class="badge" style="background:${typeColors[m.type]||'#66668a'}22;color:${typeColors[m.type]||'#66668a'};border:1px solid ${typeColors[m.type]||'#66668a'}44;font-size:10px;">${esc(m.type)}</span>` : ''}
-                  <span style="font-size:11px;color:var(--muted);">${m.deals} leadov</span>
+                  <span style="font-size:11px;color:var(--muted);">${m.opps} príležitostí</span>
                 </div>
                 <span class="mono" style="font-size:13px;font-weight:700;color:var(--acc);">${EUR(m.value)}</span>
               </div>
               <div style="height:5px;background:var(--brd);border-radius:3px;">
-                <div style="height:100%;border-radius:3px;background:linear-gradient(90deg,var(--acc),#f0b85a);width:${Math.round(m.value/maxMember*100)}%;transition:width 0.6s;"></div>
+                <div style="height:100%;border-radius:3px;background:linear-gradient(90deg,var(--acc),#f0b85a);width:${Math.round(m.value/maxMember*100)}%;"></div>
               </div>
             </div>`).join('')}
       </div>`;
@@ -141,13 +173,17 @@ const dashboardView = {
   _initFunnel() {
     const canvas = document.getElementById('chart-funnel');
     if (!canvas || typeof Chart === 'undefined') return;
-    const { deals } = app.state;
-    const data = DEAL_STATUSES.map(s => ({
-      label: DEAL_STATUS_LABELS[s],
-      value: deals.filter(d => d.status === s).reduce((a, d) => a + (d.value||0), 0),
-      count: deals.filter(d => d.status === s).length,
-      color: DEAL_STATUS_COLORS[s],
-    }));
+    const opps  = app.state.opportunities || [];
+    const leads = app.state.leads || [];
+
+    const data = [
+      { label: 'Nové leady',     value: leads.filter(l=>l.status==='new').length,         color: '#66668a' },
+      { label: 'Kontaktovaní',   value: leads.filter(l=>l.status==='contacted').length,    color: '#5ba4f5' },
+      { label: 'Kvalifikovaní',  value: leads.filter(l=>l.status==='qualified').length,    color: '#a78bfa' },
+      { label: 'Príležitosti',   value: opps.filter(o=>o.status==='open').length,          color: '#d4943a' },
+      { label: 'Rokovanie',      value: opps.filter(o=>o.status==='negotiation').length,   color: '#f0b85a' },
+      { label: 'Vyhraté',        value: opps.filter(o=>o.status==='won').length,           color: '#3ecf8e' },
+    ];
     const chart = new Chart(canvas, {
       type: 'bar',
       data: {
@@ -163,10 +199,10 @@ const dashboardView = {
         indexAxis: 'y', responsive: true,
         plugins: {
           legend: { display: false },
-          tooltip: { callbacks: { label: ctx => ` ${EUR(ctx.raw)}  (${data[ctx.dataIndex].count}×)` } },
+          tooltip: { callbacks: { label: ctx => ` ${ctx.raw} záznamov` } },
         },
         scales: {
-          x: { grid:{ color:'#24243a' }, ticks:{ color:'#66668a', callback: v => EUR(v) }, border:{ color:'#24243a' } },
+          x: { grid:{ color:'#24243a' }, ticks:{ color:'#66668a', stepSize: 1 }, border:{ color:'#24243a' } },
           y: { grid:{ display:false }, ticks:{ color:'#dcdcf0', font:{ size:12 } }, border:{ color:'#24243a' } },
         },
       },
