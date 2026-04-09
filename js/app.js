@@ -50,6 +50,8 @@ const app = {
     this.renderContent();
     this.updateFooter();
     this._updatePreviewBanner();
+    // Spusti notifikácie
+    if (typeof notifView !== 'undefined') notifView.init();
   },
 
   showLogin() {
@@ -190,7 +192,15 @@ const app = {
       </div>
       <div id="app">
         <div id="sidebar">
-          <div id="sidebar-head"><div class="brand">Axiona</div><div class="title">CRM</div></div>
+          <div id="sidebar-head">
+            <div class="brand">Axiona</div>
+            <div class="title">CRM</div>
+            <button id="notif-bell" onclick="notifView.openPanel()"
+              style="margin-left:auto;background:none;border:none;cursor:pointer;position:relative;padding:4px;color:var(--muted);">
+              🔔
+              <span id="notif-count" style="display:none;position:absolute;top:-2px;right:-2px;background:var(--red);color:#fff;font-size:9px;font-weight:700;border-radius:8px;padding:1px 4px;min-width:14px;text-align:center;"></span>
+            </button>
+          </div>
           <nav id="nav"></nav>
           <div id="sidebar-foot" style="padding:12px 18px;border-top:1px solid var(--brd);font-size:12px;color:var(--muted);"></div>
           <div style="padding:10px 10px 16px;border-top:1px solid var(--brd);display:flex;flex-direction:column;gap:5px;">
