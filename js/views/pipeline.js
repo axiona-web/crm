@@ -102,22 +102,22 @@ const pipelineView = {
       const colVal   = colDeals.reduce((a,d) => a+(d.sale_price_snapshot||0), 0);
       return `
         <div class="kanban-col" data-status="${col.key}"
-          style="min-width:200px;max-width:220px;flex-shrink:0;"
+          style="min-width:155px;max-width:165px;flex-shrink:0;"
           ondragover="event.preventDefault();pipelineView._onDragOver(this)"
           ondragleave="pipelineView._onDragLeave(this)"
           ondrop="pipelineView._onDrop(event,'${col.key}')">
 
           <!-- Hlavička stĺpca -->
-          <div style="padding:8px 10px 6px;margin-bottom:8px;border-radius:8px;background:${col.color}18;border:1px solid ${col.color}33;">
+          <div style="padding:6px 8px 5px;margin-bottom:6px;border-radius:7px;background:${col.color}18;border:1px solid ${col.color}33;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span style="font-size:11px;font-weight:700;color:${col.color};text-transform:uppercase;letter-spacing:0.05em;">${col.label}</span>
-              <span style="font-size:10px;background:${col.color}33;color:${col.color};padding:1px 6px;border-radius:10px;font-weight:600;">${colDeals.length}</span>
+              <span style="font-size:10px;font-weight:700;color:${col.color};text-transform:uppercase;letter-spacing:0.04em;">${col.label}</span>
+              <span style="font-size:10px;background:${col.color}33;color:${col.color};padding:1px 5px;border-radius:10px;font-weight:600;">${colDeals.length}</span>
             </div>
-            ${colVal > 0 ? `<div style="font-size:11px;color:${col.color};margin-top:2px;opacity:0.8;">${EUR(colVal)}</div>` : ''}
+            ${colVal > 0 ? `<div style="font-size:10px;color:${col.color};margin-top:1px;opacity:0.8;">${EUR(colVal)}</div>` : ''}
           </div>
 
           <!-- Karty -->
-          <div class="kanban-cards" data-status="${col.key}" style="min-height:80px;">
+          <div class="kanban-cards" data-status="${col.key}" style="min-height:60px;">
             ${colDeals.map(d => this._card(d, col.color)).join('')}
           </div>
         </div>`;
@@ -125,7 +125,7 @@ const pipelineView = {
 
     board.innerHTML = `
       <style>
-        .kanban-board { display:flex;gap:10px;align-items:flex-start;padding:4px 2px; }
+        .kanban-board { display:flex;gap:6px;align-items:flex-start;padding:4px 2px; }
         .kanban-col.drag-over .kanban-cards { background:rgba(255,255,255,0.04);border-radius:8px; }
         .deal-card { cursor:grab; transition:transform 0.1s,box-shadow 0.1s; }
         .deal-card:active { cursor:grabbing; }
@@ -144,26 +144,24 @@ const pipelineView = {
     const canMove  = role === 'admin' || d.owner_id === app._currentUserId() || d.assigned_to === app._currentUserId();
 
     return `
-      <div class="card deal-card" style="margin-bottom:7px;padding:10px 11px;font-size:12px;"
+      <div class="card deal-card" style="margin-bottom:5px;padding:8px 9px;font-size:11px;"
         draggable="${canMove}"
         data-id="${d.id}"
         ondragstart="pipelineView._onDragStart(event,'${d.id}')"
         ondragend="pipelineView._onDragEnd(event)"
         onclick="pipelineView._openDetail('${d.id}')">
 
-        ${slaWarn ? `<div style="font-size:10px;color:var(--red);margin-bottom:4px;">⚠ SLA</div>` : ''}
-        ${d.requires_approval && !d.reviewed_at ? `<div style="font-size:10px;color:var(--acc);margin-bottom:4px;">⏳ Čaká schválenie</div>` : ''}
+        ${slaWarn ? `<div style="font-size:9px;color:var(--red);margin-bottom:3px;">⚠ SLA</div>` : ''}
+        ${d.requires_approval && !d.reviewed_at ? `<div style="font-size:9px;color:var(--acc);margin-bottom:3px;">⏳ Čaká</div>` : ''}
 
-        <div style="font-weight:700;margin-bottom:5px;line-height:1.3;color:var(--txt);">${esc(d.title||'—')}</div>
+        <div style="font-weight:700;margin-bottom:4px;line-height:1.3;color:var(--txt);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(d.title||'—')}</div>
 
-        ${contact ? `<div style="color:var(--muted);margin-bottom:3px;">👤 ${esc(contact.name)}</div>` : ''}
-        ${product ? `<div style="color:var(--muted);margin-bottom:3px;">🛍 ${esc(product.name)}</div>` : ''}
+        ${contact ? `<div style="color:var(--muted);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">👤 ${esc(contact.name)}</div>` : ''}
+        ${product ? `<div style="color:var(--muted);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🛍 ${esc(product.name)}</div>` : ''}
 
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
-          <span class="mono" style="font-weight:700;color:${colColor};">${EUR(price)}</span>
-          <div style="display:flex;gap:4px;">
-            ${hasKey ? `<button class="icon-btn" style="font-size:11px;" title="AI" onclick="event.stopPropagation();pipelineView._openAI('${d.id}')">✦</button>` : ''}
-          </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px;">
+          <span class="mono" style="font-weight:700;color:${colColor};font-size:11px;">${EUR(price)}</span>
+          ${hasKey ? `<button class="icon-btn" style="font-size:10px;padding:1px 4px;" title="AI" onclick="event.stopPropagation();pipelineView._openAI('${d.id}')">✦</button>` : ''}
         </div>
       </div>`;
   },
