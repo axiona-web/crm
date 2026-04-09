@@ -10,8 +10,9 @@ const aiProxy = {
 
   // Hlavná metóda — zavolá Edge Function
   async call({ system, messages, model = 'claude-haiku-4-5-20251001', max_tokens = 1000 }) {
-    const session = await db.client.auth.getSession();
-    const token   = session.data.session?.access_token;
+    // Získaj token priamo z auth
+    const { data: { session } } = await db.client.auth.getSession();
+    const token = session?.access_token;
 
     if (!token) throw new Error('Nie si prihlásený.');
 
