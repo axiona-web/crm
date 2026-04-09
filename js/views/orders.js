@@ -165,12 +165,15 @@ const ordersView = {
     if (btn) { btn.disabled = true; btn.textContent = 'Ukladám...'; }
 
     const obj = {
-      contactId: this._val('of-contact') || null,
-      dealId:    this._val('of-deal')    || null,
-      productId: this._val('of-product') || null,
-      status:    this._val('of-status')  || 'pending_payment',
-      value:     Number(value) || 0,
-      notes:     this._val('of-notes'),
+      contactId:  this._val('of-contact') || null,
+      dealId:     this._val('of-deal')    || null,
+      productId:  this._val('of-product') || null,
+      status:     this._val('of-status')  || 'pending_payment',
+      value:      Number(value) || 0,
+      notes:      this._val('of-notes'),
+      owner_id:   app._currentUserId(),
+      product_id: this._val('of-product') || null,
+      contact_id: this._val('of-contact') || null,
     };
 
     try {
