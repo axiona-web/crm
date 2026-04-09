@@ -57,11 +57,17 @@ const pipelineView = {
     await this._load();
     this._renderFilters();
     this._renderList();
+    // Aktualizuj tab tlačidlá podľa aktuálneho _tab
+    document.querySelectorAll('.filter-tab').forEach(b => {
+      const onclick = b.getAttribute('onclick') || '';
+      if (onclick.includes("'leads'")) b.classList.toggle('active', this._tab === 'leads');
+      if (onclick.includes("'opps'"))  b.classList.toggle('active', this._tab === 'opps');
+    });
   },
 
   async _load() {
-    const uid  = app._currentUserId();
-    const role = app.state.userRole || previewRole.effective() || auth.profile?.role;
+    const uid     = app._currentUserId();
+    const role    = previewRole.effective() || auth.profile?.role;
     const isAdmin = role === 'admin';
 
     let leadsQ = db.client.from('leads')
@@ -70,15 +76,21 @@ const pipelineView = {
     if (!isAdmin) leadsQ = leadsQ.or(`owner_id.eq.${uid},assigned_to.eq.${uid},created_by.eq.${uid}`);
 
     let oppsQ = db.client.from('opportunities')
-      .select('*, contacts(name,email), products(name,category,base_price), profiles!opportunities_assigned_to_fkey(name)')
+      .select('*, contacts(name,email), products(name,category,base_price)')
       .order('created_at', { ascending: false });
-    if (!isAdmin) oppsQ = oppsQ.or(`owner_id.eq.${uid},assigned_to.eq.${uid}`);
+    if (!isAdmin) oppsQ = oppsQ.or(`owner_id.eq.${uid},assigned_to.eq.${uid},created_by.eq.${uid}`);
 
-    const [{ data: leads }, { data: opps }] = await Promise.all([leadsQ, oppsQ]);
-    this._leads = leads || [];
-    this._opps  = opps  || [];
+    const [leadsRes, oppsRes] = await Promise.all([leadsQ, oppsQ]);
 
-    // Update counts
+    if (leadsRes.error) console.error('Leads error:', leadsRes.error);
+    if (oppsRes.error)  console.error('Opps error:',  oppsRes.error);
+
+    this._leads = leadsRes.data || [];
+    this._opps  = oppsRes.data  || [];
+
+    console.log(`Loaded: ${this._leads.length} leads, ${this._opps.length} opps`);
+
+    // Update counts v taboch
     const lc = document.getElementById('leads-count');
     const oc = document.getElementById('opps-count');
     if (lc) lc.textContent = `(${this._leads.length})`;
@@ -88,13 +100,15 @@ const pipelineView = {
   _switchTab(tab) {
     this._tab    = tab;
     this._filter = 'all';
+    // Aktualizuj tab tlačidlá priamo
+    const btns = document.querySelectorAll('#pipeline-wrap .filter-tab, div.filter-tab');
+    document.querySelectorAll('.filter-tab').forEach(b => {
+      const onclick = b.getAttribute('onclick') || '';
+      if (onclick.includes("'leads'")) b.classList.toggle('active', tab === 'leads');
+      if (onclick.includes("'opps'"))  b.classList.toggle('active', tab === 'opps');
+    });
     this._renderFilters();
     this._renderList();
-    // Aktualizuj tab tlačidlá
-    document.querySelectorAll('.filter-tab').forEach((b,i) => {
-      if (i === 0) b.classList.toggle('active', tab === 'leads');
-      if (i === 1) b.classList.toggle('active', tab === 'opps');
-    });
   },
 
   _renderFilters() {
@@ -359,12 +373,10 @@ const pipelineView = {
       if (l) l.status = 'qualified';
 
       modal.close();
-      // Resetuj loaded stav pipeline a prepni na opps tab
-      pipelineView._leads = [];
-      pipelineView._opps  = [];
-      await pipelineView._load();
-      pipelineView._filter = 'all';
-      pipelineView._switchTab('opps');
+      // Nastav tab na opps pred reloadom
+      pipelineView._tab = 'opps';
+      // Kompletný reload view
+      app.setView('pipeline');
     } catch(e) {
       console.error('Convert error:', e);
       alert('Chyba pri vytváraní príležitosti:\n' + e.message);
