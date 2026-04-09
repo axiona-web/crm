@@ -90,9 +90,20 @@ function orderToRow(o, ownerId) {
 
 function commFromRow(r) {
   return {
-    id: r.id, dealId: r.deal_id, contactId: r.contact_id, ownerId: r.owner_id,
-    amount: r.amount || 0, rate: r.rate || 0, status: r.status || 'pending',
-    date: r.date || '', notes: r.notes || '', createdAt: r.created_at,
+    id:        r.id,
+    dealId:    r.deal_id    || null,
+    contactId: r.contact_id || null,
+    ownerId:   r.owner_id   || null,
+    order_id:  r.order_id   || null,
+    amount:    r.amount     || 0,
+    rate:      r.rate       || 0,
+    status:    r.status     || 'pending',
+    date:      r.date       || '',
+    notes:     r.notes      || '',
+    createdAt: r.created_at,
+    approvedBy: r.approved_by,
+    approvedAt: r.approved_at,
+    paidAt:     r.paid_at,
   };
 }
 
