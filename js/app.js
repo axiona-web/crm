@@ -58,22 +58,30 @@ const app = {
 
   async _loadData() {
     try {
-      const [contacts, deals, orders, commissions, products] = await Promise.all([
-        db.getContacts(), db.getDeals(), db.getOrders(), db.getCommissions(),
+      const [contacts, deals, orders, commissions, products, leads, opps] = await Promise.all([
+        db.getContacts(),
+        db.getDeals(),
+        db.getOrders(),
+        db.getCommissions(),
         db.client.from('products').select('*').order('name').then(r => r.data || []),
+        db.client.from('leads').select('*, contacts(name,email), products(name,category)').order('created_at', { ascending: false }).then(r => r.data || []),
+        db.client.from('opportunities').select('*, contacts(name,email), products(name,category,base_price), profiles!opportunities_assigned_to_fkey(name)').order('created_at', { ascending: false }).then(r => r.data || []),
       ]);
-      this.state.contacts    = contacts;
-      this.state.deals       = deals;
-      this.state.orders      = orders;
-      this.state.commissions = commissions;
-      this.state.products    = products;
+      this.state.contacts      = contacts;
+      this.state.deals         = deals;
+      this.state.orders        = orders;
+      this.state.commissions   = commissions;
+      this.state.products      = products;
+      this.state.leads         = leads;
+      this.state.opportunities = opps;
     } catch(e) { console.error('Load error:', e); }
   },
 
   setView(id) {
     this.state.view = id;
     this.renderNav();
-    this.renderContent();
+    // Refreshni dáta pri každom prepnutí záložky
+    this._loadData().then(() => this.renderContent());
   },
 
   renderNav() {
