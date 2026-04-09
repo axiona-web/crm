@@ -94,6 +94,8 @@ const NAV_BY_ROLE = {
     { id: 'pipeline',    icon: '📊', label: 'Pipeline'    },
     { id: 'orders',      icon: '📦', label: 'Objednávky'  },
     { id: 'commissions', icon: '💰', label: 'Provízie'    },
+    { id: 'payouts',     icon: '💸', label: 'Výplaty'     },
+    { id: 'reporting',   icon: '📈', label: 'Reporting'   },
     { id: 'partners',    icon: '🤝', label: 'Tím'         },
     { id: 'products',    icon: '🛍️', label: 'Produkty'    },
     { id: 'calc',        icon: '🧮', label: 'Kalkulačka'  },
