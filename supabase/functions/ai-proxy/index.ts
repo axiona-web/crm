@@ -1,4 +1,3 @@
-// supabase/functions/ai-proxy/index.ts
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -13,44 +12,26 @@ serve(async (req) => {
   }
 
   try {
-    // Overi JWT token
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+    // Overenie cez anon key — frontend musí poslať platný Bearer token
+    const authHeader = req.headers.get("Authorization") || "";
+    const apiKeyHeader = req.headers.get("apikey") || "";
+
+    if (!authHeader && !apiKeyHeader) {
+      return new Response(JSON.stringify({ error: "Missing authorization" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    // Overi či je user prihlásený
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Načítaj API kľúč z app_settings
-    const { data: setting } = await supabase
-      .from("app_settings")
-      .select("value")
-      .eq("key", "anthropic_api_key")
-      .single();
-
-    const apiKey = setting?.value || Deno.env.get("ANTHROPIC_API_KEY");
+    // Načítaj Anthropic kľúč z environment
+    const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: "API key not configured" }), {
+      return new Response(JSON.stringify({ error: "API key not configured on server" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Prepoš požiadavku na Anthropic
     const body = await req.json();
+
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -68,14 +49,6 @@ serve(async (req) => {
 
     const data = await response.json();
 
-    // Loguj volanie
-    await supabase.from("audit_logs").insert({
-      user_id: user.id,
-      action: "ai_call",
-      entity_type: "ai_proxy",
-      new_value: jsonb_build_object_safe({ model: body.model, tokens: data.usage }),
-    }).catch(() => {});
-
     return new Response(JSON.stringify(data), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -86,7 +59,3 @@ serve(async (req) => {
     });
   }
 });
-
-function jsonb_build_object_safe(obj: Record<string, unknown>): string {
-  try { return JSON.stringify(obj); } catch { return "{}"; }
-}
