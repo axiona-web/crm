@@ -110,12 +110,27 @@ function commFromRow(r) {
 }
 
 function commToRow(c, ownerId) {
-  return {
-    deal_id: c.dealId || null, contact_id: c.contactId || null,
-    owner_id: ownerId, amount: Number(c.amount) || 0,
-    rate: Number(c.rate) || 0, status: c.status || 'pending',
-    date: c.date || null, notes: c.notes || null,
+  const row = {
+    deal_id:    c.dealId    || null,
+    contact_id: c.contactId || null,
+    owner_id:   c.ownerId   || ownerId,
+    amount:     Number(c.amount) || 0,
+    rate:       Number(c.rate)   || 0,
+    status:     c.status         || 'pending',
+    date:       c.date           || null,
+    notes:      c.notes          || null,
   };
+  if (c.status === 'approved' && c.approvedBy) {
+    row.approved_by = c.approvedBy;
+    row.approved_at = c.approvedAt || new Date().toISOString();
+  }
+  if (c.status === 'paid' && c.paidAt) {
+    row.paid_at = c.paidAt || new Date().toISOString();
+  }
+  if (c.status === 'cancelled') {
+    row.cancelled_at = new Date().toISOString();
+  }
+  return row;
 }
 
 // ── DB API ────────────────────────────────────────────────────────────────────
