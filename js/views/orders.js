@@ -137,6 +137,19 @@ const ordersView = {
       </div>
       <div class="form-row"><label class="form-label">Hodnota (€) *</label>
         <input id="of-value" type="number" value="${o.value||''}" /></div>
+      <div class="form-grid-2">
+        <div class="form-row"><label class="form-label">Spôsob platby</label>
+          <select id="of-payment-method">
+            <option value="">— vybrať —</option>
+            <option value="bank_transfer"${o.payment_method==='bank_transfer'?' selected':''}>Bankový prevod</option>
+            <option value="card"${o.payment_method==='card'?' selected':''}>Karta</option>
+            <option value="cash"${o.payment_method==='cash'?' selected':''}>Hotovosť</option>
+            <option value="invoice"${o.payment_method==='invoice'?' selected':''}>Faktúra</option>
+          </select>
+        </div>
+        <div class="form-row"><label class="form-label">Referencia platby</label>
+          <input id="of-payment-ref" value="${esc(o.payment_reference||'')}" placeholder="č. faktúry, VS..." /></div>
+      </div>
       <div class="form-row"><label class="form-label">Poznámky</label>
         <textarea id="of-notes" style="min-height:60px;resize:vertical;">${esc(o.notes||'')}</textarea></div>
       <div id="of-error" style="display:none;color:var(--red);font-size:12px;padding:8px;background:rgba(242,85,85,0.1);border-radius:6px;"></div>
@@ -178,16 +191,17 @@ const ordersView = {
     if (btn) { btn.disabled = true; btn.textContent = 'Ukladám...'; }
 
     const obj = {
-      contactId:      this._val('of-contact') || null,
-      contact_id:     this._val('of-contact') || null,
-      dealId:         this._val('of-opp')     || null,
-      opportunity_id: this._val('of-opp')     || null,
-      productId:      this._val('of-product') || null,
-      product_id:     this._val('of-product') || null,
-      status:         this._val('of-status')  || 'pending_payment',
-      value:          Number(value) || 0,
-      notes:          this._val('of-notes'),
-      owner_id:       app._currentUserId(),
+      contactId:        this._val('of-contact')        || null,
+      contact_id:       this._val('of-contact')        || null,
+      dealId:           this._val('of-opp')            || null,
+      opportunity_id:   this._val('of-opp')            || null,
+      product_id:       this._val('of-product')        || null,
+      status:           this._val('of-status')         || 'pending_payment',
+      value:            Number(value)                  || 0,
+      payment_method:   this._val('of-payment-method') || null,
+      payment_reference:this._val('of-payment-ref')    || null,
+      notes:            this._val('of-notes'),
+      owner_id:         app._currentUserId(),
     };
 
     try {

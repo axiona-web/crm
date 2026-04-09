@@ -2,9 +2,10 @@
 
 const LEAD_STATUSES = {
   new:        { label: 'Nový',          color: 'var(--muted)' },
-  assigned:   { label: 'Priradený',     color: 'var(--blue)'  },
-  contacted:  { label: 'Kontaktovaný',  color: 'var(--purple)'},
-  qualified:  { label: 'Kvalifikovaný', color: 'var(--acc)'   },
+  reviewed:   { label: 'Skontrolovaný', color: 'var(--blue)'  },
+  assigned:   { label: 'Priradený',     color: 'var(--purple)'},
+  contacted:  { label: 'Kontaktovaný',  color: 'var(--acc)'   },
+  qualified:  { label: 'Kvalifikovaný', color: 'var(--green)' },
   lost:       { label: 'Stratený',      color: 'var(--red)'   },
   cancelled:  { label: 'Zrušený',       color: 'var(--muted)' },
 };
@@ -12,6 +13,7 @@ const LEAD_STATUSES = {
 const OPP_STATUSES = {
   open:        { label: 'Otvorená',    color: 'var(--blue)'  },
   negotiation: { label: 'Rokovanie',   color: 'var(--purple)'},
+  offer_sent:  { label: 'Ponuka',      color: 'var(--acc)'   },
   won:         { label: 'Vyhraná',     color: 'var(--green)' },
   lost:        { label: 'Stratená',    color: 'var(--red)'   },
   cancelled:   { label: 'Zrušená',     color: 'var(--muted)' },
@@ -160,9 +162,12 @@ const pipelineView = {
           </div>
           <div style="display:flex;gap:5px;align-items:center;flex-shrink:0;">
             ${hasKey?`<button class="icon-btn" onclick="event.stopPropagation();aiLead.openPanelLead('${l.id}')">✦</button>`:''}
-            ${l.status==='qualified'?`
+            ${(l.status==='qualified') ? `
               <button class="btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--green);white-space:nowrap;"
                 onclick="event.stopPropagation();pipelineView._convertToOpp('${l.id}')">→ Príležitosť</button>`:''}
+            ${(l.status==='new' && (previewRole.effective()||auth.profile?.role)==='admin') ? `
+              <button class="btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--blue);white-space:nowrap;"
+                onclick="event.stopPropagation();pipelineView._reviewLead('${l.id}')">✓ Review</button>`:''}
             <button class="icon-btn" onclick="event.stopPropagation();pipelineView._moveLeadStatus('${l.id}',-1)">◀</button>
             <button class="icon-btn" onclick="event.stopPropagation();pipelineView._moveLeadStatus('${l.id}',1)">▶</button>
           </div>
@@ -199,6 +204,14 @@ const pipelineView = {
   },
 
   // ── Status pohyb ──────────────────────────────────────────────────────────
+  async _reviewLead(id) {
+    const { error } = await db.client.from('leads').update({ status: 'reviewed' }).eq('id', id);
+    if (error) { alert('Chyba: ' + error.message); return; }
+    const l = this._leads.find(x => x.id === id);
+    if (l) l.status = 'reviewed';
+    this._renderList();
+  },
+
   async _moveLeadStatus(id, dir) {
     const keys = Object.keys(LEAD_STATUSES);
     const l    = this._leads.find(x => x.id === id);
@@ -381,13 +394,24 @@ const pipelineView = {
   async _saveLead() {
     const title = document.getElementById('lf-title')?.value.trim();
     if (!title) { alert('Zadaj názov.'); return; }
+
+    // Kontrola duplikátu
+    const contactId = document.getElementById('lf-contact')?.value;
+    if (contactId) {
+      const { data: dups } = await db.client.rpc('check_lead_duplicate', { p_contact_id: contactId });
+      if (dups?.length > 0) {
+        const names = dups.map(d => `"${d.title}" (${d.status})`).join(', ');
+        if (!confirm(`⚠️ Tento kontakt má aktívne leady: ${names}\n\nChceš napriek tomu vytvoriť nový lead?`)) return;
+      }
+    }
+
     const btn = document.getElementById('lf-btn');
     if (btn) { btn.disabled = true; btn.textContent = '⏳...'; }
     const uid = app._currentUserId();
     try {
       const { data, error } = await db.client.from('leads').insert({
         title,
-        contact_id:     document.getElementById('lf-contact')?.value || null,
+        contact_id:     contactId || null,
         product_id:     document.getElementById('lf-product')?.value || null,
         value_estimate: Number(document.getElementById('lf-value')?.value) || 0,
         source:         document.getElementById('lf-source')?.value || 'manual',
