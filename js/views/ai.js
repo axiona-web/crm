@@ -10,6 +10,11 @@ const aiView = {
     return localStorage.getItem('axiona_ai_key') || '';
   },
 
+  async _hasKey() {
+    if (typeof aiProxy !== 'undefined') return await aiProxy.hasKey();
+    return !!this._getApiKey();
+  },
+
   render() {
     const msgs = this.history.map(m => this._bubble(m)).join('');
     const loadingBubble = this.loading
@@ -64,8 +69,8 @@ const aiView = {
     const text = el?.value.trim();
     if (!text || this.loading) return;
 
-    const apiKey = this._getApiKey();
-    if (!apiKey) { app.showApiSetup(); return; }
+    const hasKey = await this._hasKey();
+    if (!hasKey) { app.showApiSetup(); return; }
 
     el.value = '';
     this.history.push({ role: 'user', content: text });
@@ -80,50 +85,50 @@ const aiView = {
       const { contacts, deals, orders, commissions } = app.state;
       const products = app.state.products || [];
 
-      const system = `Si CRM asistent pre obchodný tím Axiona. Komunikuješ výhradne po slovensky. Si konkrétny, stručný a praktický. Vyhýbaš sa zbytočným úvodným frázam.
+      const system = `Si CRM asistent pre obchodný tím Axiona. Komunikuješ výhradne po slovensky. Si konkrétny, stručný a praktický.
 
-PRODUKTY (${products.length}):
-${products.slice(0,20).map(p=>`- ${p.name} (${p.category||''}) ${p.base_price||p.price||0}€`).join('\n')}
+PRODUKTY (${products.length}): ${products.slice(0,15).map(p=>`${p.name} ${p.base_price||0}€`).join(', ')}
 
-KONTAKTY/ČLENOVIA (${contacts.length}):
-${JSON.stringify(contacts.slice(0,15).map(c=>({name:c.name,email:c.email,phone:c.phone})), null, 2)}
+DEALY (${deals.length}): ${JSON.stringify(deals.slice(0,10).map(d=>({title:d.title,status:d.status,value:d.sale_price_snapshot||0,produkt:d.product_name_snapshot})))}
 
-PIPELINE (${deals.length} leadov):
-${JSON.stringify(deals.slice(0,15).map(d=>({title:d.title,status:d.status,value:d.value,kontakt:contacts.find(c=>c.id===d.contactId)?.name,produkt:products.find(p=>p.id===d.productId)?.name,uzatvorenie:d.expectedClose,poznamky:d.notes})), null, 2)}
+ČLENOVIA (${contacts.length}): ${contacts.slice(0,10).map(c=>c.name).join(', ')}
 
-OBJEDNÁVKY (${(orders||[]).length}):
-${JSON.stringify((orders||[]).slice(0,10).map(o=>({produkt:o.product_name_snapshot,hodnota:o.value,stav:o.status,datum:o.created_at?.slice(0,10)})), null, 2)}
-
-PROVÍZIE (${commissions.length}):
-${JSON.stringify(commissions.slice(0,10).map(c=>({suma:c.amount,stav:c.status,percento:c.rate})), null, 2)}
-
-Pri emailoch uvádzaj predmet. Pri analýzach buď konkrétny s číslami.`;
+PROVÍZIE: pending ${commissions.filter(c=>c.status==='pending').reduce((a,c)=>a+(c.amount||0),0)}€, schválené ${commissions.filter(c=>c.status==='approved').reduce((a,c)=>a+(c.amount||0),0)}€`;
 
       const messages = this.history.slice(-14).map(m => ({ role: m.role, content: m.content }));
 
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 1024,
-          system,
-          messages,
-        }),
-      });
+      let reply;
+      // Skús Edge Function proxy
+      if (typeof aiProxy !== 'undefined') {
+        try {
+          reply = await aiProxy.call({ system, messages, max_tokens: 1024 });
+        } catch(proxyErr) {
+          console.warn('Proxy failed, falling back to direct:', proxyErr.message);
+          // Fallback na priame volanie s localStorage kľúčom
+          const apiKey = this._getApiKey();
+          if (!apiKey) throw proxyErr;
+          const res = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: { 'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true' },
+            body: JSON.stringify({ model:'claude-haiku-4-5-20251001', max_tokens:1024, system, messages }),
+          });
+          const data = await res.json();
+          reply = data.content?.find(b=>b.type==='text')?.text || data.error?.message || 'Chyba.';
+        }
+      } else {
+        const apiKey = this._getApiKey();
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true' },
+          body: JSON.stringify({ model:'claude-haiku-4-5-20251001', max_tokens:1024, system, messages }),
+        });
+        const data = await res.json();
+        reply = data.content?.find(b=>b.type==='text')?.text || data.error?.message || 'Chyba.';
+      }
 
-      const data  = await res.json();
-      const reply = data.content?.find(b => b.type === 'text')?.text
-                 || data.error?.message
-                 || 'Chyba pri odpovedi.';
       this.history.push({ role: 'assistant', content: reply });
     } catch(e) {
-      this.history.push({ role: 'assistant', content: `Chyba pripojenia: ${e.message}` });
+      this.history.push({ role: 'assistant', content: `Chyba: ${e.message}` });
     }
 
     this.loading = false;

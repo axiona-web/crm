@@ -353,7 +353,7 @@ const pipelineView = {
   },
 
   // ── Detail dealu ─────────────────────────────────────────────────────────
-  _openDetail(id) {
+  async _openDetail(id) {
     const d = this._deals.find(x => x.id === id);
     if (!d) return;
 
@@ -363,25 +363,84 @@ const pipelineView = {
     const price   = d.sale_price_snapshot || product?.base_price || 0;
     const cost    = d.cost_snapshot || product?.cost_price || 0;
     const comm    = d.commission_amount_snapshot || 0;
-    const margin  = price - cost;
     const net     = price - cost - comm;
     const role    = previewRole.effective() || auth.profile?.role;
     const isAdmin = role === 'admin';
 
+    // Checklist — čo chýba pre ďalší krok
+    const checks = [
+      { ok: !!d.contact_id,           label: 'Kontakt', needed: ['contacted','offer_sent','won','payment_pending','paid'] },
+      { ok: !!d.product_id,           label: 'Produkt', needed: ['offer_sent','won','payment_pending','paid'] },
+      { ok: price > 0,                label: 'Cena',    needed: ['offer_sent','won','payment_pending','paid'] },
+      { ok: !!d.payment_method,       label: 'Spôsob platby', needed: ['paid'] },
+      { ok: !!d.payment_reference,    label: 'Referencia platby', needed: ['paid'] },
+    ];
+    const colIdx  = DEAL_COLS.findIndex(c => c.key === d.status);
+    const nextCol = DEAL_COLS[colIdx + 1];
+    const blockers = nextCol
+      ? checks.filter(c => !c.ok && c.needed.includes(nextCol.key))
+      : [];
+
+    // Načítaj históriu a benefit level klienta
+    const [histRes, contactProfileRes] = await Promise.all([
+      db.client.from('deal_history').select('*').eq('deal_id', id).order('created_at', { ascending: false }).limit(10),
+      d.contact_id
+        ? db.client.from('profiles')
+            .select('name,points,rolling_points,lifetime_points,membership_levels(name,color,icon,discount_pct)')
+            .eq('email', contact?.email || '')
+            .single()
+        : Promise.resolve({ data: null }),
+    ]);
+    const history      = histRes.data || [];
+    const clientProfile = contactProfileRes.data;
+    const clientLevel   = clientProfile?.membership_levels;
+
     const statusOpts = DEAL_COLS.map(c =>
       `<option value="${c.key}"${d.status===c.key?' selected':''}>${c.label}</option>`
     ).join('') +
-    `<option value="lost"${d.status==='lost'?' selected':''}>Stratený</option>
-     <option value="cancelled"${d.status==='cancelled'?' selected':''}>Zrušený</option>`;
+    `<option value="lost"${d.status==='lost'?' selected':''}>❌ Stratený</option>
+     <option value="cancelled"${d.status==='cancelled'?' selected':''}>🚫 Zrušený</option>`;
 
-    modal.open(`Deal: ${esc(d.title||'—')}`, `
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
-        ${col ? `<span class="badge" style="background:${col.color}18;color:${col.color};border:1px solid ${col.color}44;">${col.label}</span>` : ''}
+    const payMethods = { bank_transfer:'Bankový prevod', card:'Karta', cash:'Hotovosť', invoice:'Faktúra' };
+
+    modal.open(`📊 ${esc(d.title||'—')}`, `
+
+      <!-- Stav + blocker upozornenie -->
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+        ${col ? `<span class="badge" style="background:${col.color}18;color:${col.color};border:1px solid ${col.color}44;font-size:12px;">${col.label}</span>` : ''}
         ${d.sla_breached ? `<span style="font-size:11px;color:var(--red);">⚠ SLA porušené</span>` : ''}
         <span style="font-size:11px;color:var(--muted);">Vytvorený: ${FMT(d.created_at)}</span>
+        ${d.loss_reason ? `<span style="font-size:11px;color:var(--red);">Dôvod: ${esc(d.loss_reason)}</span>` : ''}
+        ${d.cancel_reason ? `<span style="font-size:11px;color:var(--muted);">Dôvod: ${esc(d.cancel_reason)}</span>` : ''}
       </div>
 
-      <!-- A. Základ -->
+      ${blockers.length > 0 ? `
+        <div style="background:rgba(212,148,58,0.1);border:1px solid var(--acc-brd);border-radius:8px;padding:10px 12px;margin-bottom:12px;">
+          <div style="font-size:11px;font-weight:700;color:var(--acc);margin-bottom:6px;">
+            ⚠ Pred presunom na <strong>${nextCol?.label}</strong> chýba:
+          </div>
+          ${blockers.map(b=>`<div style="font-size:12px;color:var(--acc);">• ${b.label}</div>`).join('')}
+        </div>` : nextCol ? `
+        <div style="background:rgba(62,207,142,0.08);border:1px solid rgba(62,207,142,0.3);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:var(--green);">
+          ✓ Pripravený na presun → <strong>${nextCol.label}</strong>
+        </div>` : ''}
+
+      <!-- Klient + benefit level -->
+      ${clientProfile ? `
+        <div style="background:var(--inp);border:1px solid ${clientLevel?.color||'var(--brd)'}44;border-radius:8px;padding:10px 12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-size:12px;font-weight:700;">👤 ${esc(contact?.name||'—')}</div>
+            <div style="font-size:11px;color:var(--muted);">${esc(contact?.email||'')} · ${esc(contact?.phone||'')}</div>
+          </div>
+          ${clientLevel ? `
+            <div style="text-align:right;">
+              <div style="font-size:13px;font-weight:700;color:${clientLevel.color};">${clientLevel.icon} ${clientLevel.name}</div>
+              <div style="font-size:11px;color:var(--muted);">Rolling: ${(clientProfile.rolling_points||0).toLocaleString('sk-SK')} b. · Lifetime: ${(clientProfile.lifetime_points||0).toLocaleString('sk-SK')} b.</div>
+              ${clientLevel.discount_pct > 0 ? `<div style="font-size:11px;color:${clientLevel.color};">Zľava: ${clientLevel.discount_pct}%</div>` : ''}
+            </div>` : `<div style="font-size:11px;color:var(--muted);">${(clientProfile.points||0)} bodov</div>`}
+        </div>` : ''}
+
+      <!-- Základ -->
       <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Základ</div>
       <div class="form-row"><label class="form-label">Názov *</label>
         <input id="dd-title" value="${esc(d.title||'')}" /></div>
@@ -400,10 +459,10 @@ const pipelineView = {
           </select></div>
       </div>
       <div class="form-row"><label class="form-label">Poznámky</label>
-        <textarea id="dd-notes" style="min-height:60px;resize:vertical;">${esc(d.notes||'')}</textarea></div>
+        <textarea id="dd-notes" style="min-height:55px;resize:vertical;">${esc(d.notes||'')}</textarea></div>
 
-      <!-- B. Finančné -->
-      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:14px 0 8px;">Finančné dáta</div>
+      <!-- Finančné -->
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 8px;">Finančné dáta</div>
       <div class="form-grid-2">
         <div class="form-row"><label class="form-label">Predajná cena (€)</label>
           <input id="dd-price" type="number" value="${price||''}" /></div>
@@ -413,7 +472,7 @@ const pipelineView = {
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">
         <div style="background:var(--inp);border:1px solid var(--brd);border-radius:8px;padding:8px;text-align:center;">
           <div style="font-size:10px;color:var(--muted);">Marža</div>
-          <div class="mono" style="font-weight:700;color:var(--blue);">${EUR(margin)}</div>
+          <div class="mono" style="font-weight:700;color:var(--blue);">${EUR(price-cost)}</div>
         </div>
         <div style="background:var(--inp);border:1px solid var(--brd);border-radius:8px;padding:8px;text-align:center;">
           <div style="font-size:10px;color:var(--muted);">Komisie</div>
@@ -425,20 +484,43 @@ const pipelineView = {
         </div>
       </div>
 
-      <!-- C. Platba -->
+      <!-- Platba -->
       <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Platba</div>
       <div class="form-grid-2">
         <div class="form-row"><label class="form-label">Spôsob platby</label>
           <select id="dd-pay-method">
             <option value="">—</option>
-            <option value="bank_transfer"${d.payment_method==='bank_transfer'?' selected':''}>Bankový prevod</option>
-            <option value="card"${d.payment_method==='card'?' selected':''}>Karta</option>
-            <option value="cash"${d.payment_method==='cash'?' selected':''}>Hotovosť</option>
-            <option value="invoice"${d.payment_method==='invoice'?' selected':''}>Faktúra</option>
+            ${Object.entries(payMethods).map(([k,v])=>`<option value="${k}"${d.payment_method===k?' selected':''}>${v}</option>`).join('')}
           </select></div>
         <div class="form-row"><label class="form-label">Referencia</label>
           <input id="dd-pay-ref" value="${esc(d.payment_reference||'')}" placeholder="č. faktúry, VS..." /></div>
       </div>
+
+      <!-- História zmien -->
+      ${history.length > 0 ? `
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 8px;">História zmien</div>
+        <div style="background:var(--inp);border:1px solid var(--brd);border-radius:8px;padding:6px 10px;max-height:140px;overflow-y:auto;">
+          ${history.map(h => {
+            const from = DEAL_COLS.find(c=>c.key===h.old_status);
+            const to   = DEAL_COLS.find(c=>c.key===h.new_status);
+            const timeAgo = (() => {
+              const diff = Math.round((new Date()-new Date(h.created_at))/60000);
+              if (diff < 60) return `pred ${diff} min`;
+              if (diff < 1440) return `pred ${Math.round(diff/60)} hod`;
+              return `pred ${Math.round(diff/1440)} d`;
+            })();
+            return `
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--brd);font-size:12px;">
+                <div>
+                  <span style="color:${from?.color||'var(--muted)'};">${from?.label||h.old_status||'—'}</span>
+                  <span style="color:var(--muted);margin:0 4px;">→</span>
+                  <span style="color:${to?.color||'var(--muted)'};font-weight:600;">${to?.label||h.new_status||'—'}</span>
+                  ${h.note?`<span style="color:var(--muted);margin-left:6px;font-size:11px;">(${esc(h.note)})</span>`:''}
+                </div>
+                <span style="color:var(--muted);font-size:11px;white-space:nowrap;margin-left:8px;">${timeAgo}</span>
+              </div>`;
+          }).join('')}
+        </div>` : ''}
 
       <div class="form-actions">
         <button class="btn-primary" onclick="pipelineView._saveDetail('${id}')">Uložiť</button>
