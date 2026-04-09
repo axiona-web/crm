@@ -58,22 +58,24 @@ const app = {
 
   async _loadData() {
     try {
-      const [contacts, deals, orders, commissions, products, leads, opps] = await Promise.all([
+      const [contacts, orders, commissions, products, deals] = await Promise.all([
         db.getContacts(),
-        db.getDeals(),
         db.getOrders(),
         db.getCommissions(),
         db.client.from('products').select('*').order('name').then(r => r.data || []),
-        db.client.from('leads').select('*, contacts(name,email), products(name,category)').order('created_at', { ascending: false }).then(r => r.data || []),
-        db.client.from('opportunities').select('*, contacts(name,email), products(name,category,base_price), profiles!opportunities_assigned_to_fkey(name)').order('created_at', { ascending: false }).then(r => r.data || []),
+        db.client.from('deals')
+          .select('*, contacts(name,email), products(name,category,base_price,commission_percent,commission_enabled)')
+          .order('created_at', { ascending: false })
+          .then(r => r.data || []),
       ]);
-      this.state.contacts      = contacts;
-      this.state.deals         = deals;
-      this.state.orders        = orders;
-      this.state.commissions   = commissions;
-      this.state.products      = products;
-      this.state.leads         = leads;
-      this.state.opportunities = opps;
+      this.state.contacts    = contacts;
+      this.state.orders      = orders;
+      this.state.commissions = commissions;
+      this.state.products    = products;
+      this.state.deals       = deals;
+      // Kompatibilita so starým kódom
+      this.state.leads         = deals;
+      this.state.opportunities = deals.filter(d => ['offer_sent','won','payment_pending','paid','in_progress','completed'].includes(d.status));
     } catch(e) { console.error('Load error:', e); }
   },
 
