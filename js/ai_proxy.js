@@ -4,7 +4,8 @@ const aiProxy = {
 
   // Supabase Edge Function URL
   _url() {
-    return `${db.client.supabaseUrl}/functions/v1/ai-proxy`;
+    // Priamo hardcode URL — istejšie ako brať z db.client
+    return 'https://cdusjrckwiqsfbrvczgs.supabase.co/functions/v1/ai-proxy';
   },
 
   // Hlavná metóda — zavolá Edge Function
@@ -19,7 +20,7 @@ const aiProxy = {
       headers: {
         'Content-Type':  'application/json',
         'Authorization': `Bearer ${token}`,
-        'apikey':        db.client.supabaseKey,
+        'apikey':        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNkdXNqcmNrd2lxc2ZicnZjemdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU0MDg2MTcsImV4cCI6MjA5MDk4NDYxN30.WMFMqeJB-MT9T-1dBz2lzvFDI0yfZFKNCXUZ5QBliNs',
       },
       body: JSON.stringify({ model, max_tokens, system, messages }),
     });
