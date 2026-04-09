@@ -97,6 +97,7 @@ const pipelineView = {
                     ${d.notes ? `<div style="font-size:12px;color:var(--muted);margin-top:5px;">${esc(d.notes)}</div>` : ''}
                   </div>
                   <div style="display:flex;gap:5px;align-items:center;flex-shrink:0;">
+                    ${localStorage.getItem('axiona_ai_key') ? `<button class="icon-btn" onclick="event.stopPropagation();aiLead.openPanel('${d.id}')" title="AI analýza">✦</button>` : ''}
                     <button class="icon-btn" onclick="event.stopPropagation();pipelineView.moveBack('${d.id}')">◀</button>
                     <button class="icon-btn" onclick="event.stopPropagation();pipelineView.moveNext('${d.id}')">▶</button>
                   </div>

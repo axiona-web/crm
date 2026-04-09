@@ -78,23 +78,26 @@ const aiView = {
 
     try {
       const { contacts, deals, orders, commissions } = app.state;
+      const products = app.state.products || [];
 
-      const system = `Si asistent pre CRM systém Axiona. Komunikuješ výhradne po slovensky.
-Máš prístup k týmto dátam:
+      const system = `Si CRM asistent pre obchodný tím Axiona. Komunikuješ výhradne po slovensky. Si konkrétny, stručný a praktický. Vyhýbaš sa zbytočným úvodným frázam.
 
-ČLENOVIA / KONTAKTY (${contacts.length}):
-${JSON.stringify(contacts.slice(0,20), null, 2)}
+PRODUKTY (${products.length}):
+${products.slice(0,20).map(p=>`- ${p.name} (${p.category||''}) ${p.base_price||p.price||0}€`).join('\n')}
 
-LEADY / PIPELINE (${deals.length}):
-${JSON.stringify(deals.slice(0,20), null, 2)}
+KONTAKTY/ČLENOVIA (${contacts.length}):
+${JSON.stringify(contacts.slice(0,15).map(c=>({name:c.name,email:c.email,phone:c.phone})), null, 2)}
+
+PIPELINE (${deals.length} leadov):
+${JSON.stringify(deals.slice(0,15).map(d=>({title:d.title,status:d.status,value:d.value,kontakt:contacts.find(c=>c.id===d.contactId)?.name,produkt:products.find(p=>p.id===d.productId)?.name,uzatvorenie:d.expectedClose,poznamky:d.notes})), null, 2)}
 
 OBJEDNÁVKY (${(orders||[]).length}):
-${JSON.stringify((orders||[]).slice(0,10), null, 2)}
+${JSON.stringify((orders||[]).slice(0,10).map(o=>({produkt:o.product_name_snapshot,hodnota:o.value,stav:o.status,datum:o.created_at?.slice(0,10)})), null, 2)}
 
 PROVÍZIE (${commissions.length}):
-${JSON.stringify(commissions.slice(0,10), null, 2)}
+${JSON.stringify(commissions.slice(0,10).map(c=>({suma:c.amount,stav:c.status,percento:c.rate})), null, 2)}
 
-Pomáhaj analyzovať dáta, navrhuj ďalšie kroky, identifikuj príležitosti a riziká. Buď konkrétny a stručný. Ak píšeš email, naformátuj ho čisto.`;
+Pri emailoch uvádzaj predmet. Pri analýzach buď konkrétny s číslami.`;
 
       const messages = this.history.slice(-14).map(m => ({ role: m.role, content: m.content }));
 
