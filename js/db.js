@@ -75,10 +75,14 @@ function orderFromRow(r) {
 
 function orderToRow(o, ownerId) {
   return {
-    deal_id: o.dealId || null, contact_id: o.contactId || null,
-    owner_id: ownerId, status: o.status || 'pending_payment',
-    value: Number(o.value) || 0, currency: o.currency || 'EUR',
-    notes: o.notes || null, product_id: o.productId || null,
+    deal_id:    o.dealId     || null,
+    contact_id: o.contactId  || o.contact_id  || null,
+    owner_id:   o.owner_id   || ownerId,
+    status:     o.status     || 'pending_payment',
+    value:      Number(o.value) || 0,
+    currency:   o.currency   || 'EUR',
+    notes:      o.notes      || null,
+    product_id: o.productId  || o.product_id  || null,
     updated_at: new Date().toISOString(),
   };
 }
