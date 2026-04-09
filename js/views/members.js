@@ -194,13 +194,13 @@ const membersView = {
 
     try {
       if (isNew) {
-        // Pozvať cez Supabase invite
-        const { error: inviteErr } = await db.client.auth.admin
-          ? await db.inviteMember(email, obj)
-          : { error: null };
-
         const created = await db.createContact(obj);
         app.state.contacts.unshift(created);
+        // Ak má email, skús poslať invite (nevadí ak zlyhá — kontakt je vytvorený)
+        if (email) {
+          db.client.auth.signInWithOtp({ email, options: { shouldCreateUser: true } })
+            .catch(() => {}); // ticho — invite je bonus, nie requirement
+        }
       } else {
         const orig    = app.state.contacts.find(c => c.id === id);
         const updated = await db.updateContact(id, { ...orig, ...obj });
