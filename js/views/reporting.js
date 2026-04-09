@@ -55,6 +55,16 @@ const reportingView = {
     const totalComm    = comms.filter(c=>c.status!=='cancelled').reduce((a,c) => a+(c.amount||0), 0);
     const totalMargin  = totalRevenue - totalCost;
     const totalNet     = totalRevenue - totalCost - totalComm;
+
+    // Zisk po benefitoch — zľava sa prejaví v nižšej cene (sale_price_snapshot už obsahuje zľavu)
+    // Vypočítaj koľko zliav bolo uplatnených (z notes)
+    const discountDeals = paidDeals.filter(d => d.notes?.includes('zľava'));
+    const totalDiscountSaved = discountDeals.reduce((a,d) => {
+      const match = d.notes?.match(/pôvodná cena: ([\d.]+)/);
+      const orig  = match ? parseFloat(match[1]) : 0;
+      return a + Math.max(0, orig - (d.sale_price_snapshot||0));
+    }, 0);
+
     const convRate     = closedDeals.length ? Math.round((closedDeals.length - lostDeals.length) / closedDeals.length * 100) : 0;
 
     // Pipeline konverzie — % čo prešlo z jedného stavu do ďalšieho
@@ -144,29 +154,34 @@ const reportingView = {
 
     el.innerHTML = `
       <!-- Hlavné KPI -->
-      <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:16px;">
+      <div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:16px;">
         <div class="card" style="text-align:center;background:linear-gradient(135deg,#1a180e,var(--card));border-color:var(--acc-brd);">
           <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Tržby</div>
-          <div class="mono" style="font-size:18px;font-weight:700;color:var(--acc);">${fmt(totalRevenue)}</div>
+          <div class="mono" style="font-size:16px;font-weight:700;color:var(--acc);">${fmt(totalRevenue)}</div>
           <div style="font-size:11px;color:var(--muted);">${paidDeals.length} dealov</div>
         </div>
         <div class="card" style="text-align:center;">
           <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Hrubá marža</div>
-          <div class="mono" style="font-size:18px;font-weight:700;color:var(--blue);">${fmt(totalMargin)}</div>
+          <div class="mono" style="font-size:16px;font-weight:700;color:var(--blue);">${fmt(totalMargin)}</div>
           <div style="font-size:11px;color:var(--muted);">${totalRevenue>0?Math.round(totalMargin/totalRevenue*100):0}%</div>
         </div>
         <div class="card" style="text-align:center;">
           <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Provízie</div>
-          <div class="mono" style="font-size:18px;font-weight:700;color:var(--acc);">${fmt(totalComm)}</div>
+          <div class="mono" style="font-size:16px;font-weight:700;color:var(--acc);">${fmt(totalComm)}</div>
         </div>
         <div class="card" style="text-align:center;background:linear-gradient(135deg,#0a1f12,var(--card));border-color:rgba(62,207,142,0.3);">
           <div style="font-size:10px;color:var(--green);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Čistý zisk</div>
-          <div class="mono" style="font-size:18px;font-weight:700;color:var(--green);">${fmt(totalNet)}</div>
-          <div style="font-size:11px;color:var(--muted);">${totalRevenue>0?Math.round(totalNet/totalRevenue*100):0}% marža</div>
+          <div class="mono" style="font-size:16px;font-weight:700;color:var(--green);">${fmt(totalNet)}</div>
+          <div style="font-size:11px;color:var(--muted);">${totalRevenue>0?Math.round(totalNet/totalRevenue*100):0}%</div>
+        </div>
+        <div class="card" style="text-align:center;${totalDiscountSaved>0?'border-color:rgba(167,139,250,0.3);':''}">
+          <div style="font-size:10px;color:var(--purple);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Benefit zľavy</div>
+          <div class="mono" style="font-size:16px;font-weight:700;color:var(--purple);">${fmt(totalDiscountSaved)}</div>
+          <div style="font-size:11px;color:var(--muted);">${discountDeals.length} dealov</div>
         </div>
         <div class="card" style="text-align:center;">
           <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Win rate</div>
-          <div class="mono" style="font-size:18px;font-weight:700;color:${convRate>=50?'var(--green)':'var(--acc)'};">${convRate}%</div>
+          <div class="mono" style="font-size:16px;font-weight:700;color:${convRate>=50?'var(--green)':'var(--acc)'};">${convRate}%</div>
           <div style="font-size:11px;color:var(--muted);">${closedDeals.length-lostDeals.length}/${closedDeals.length}</div>
         </div>
       </div>

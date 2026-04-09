@@ -539,7 +539,7 @@ const pipelineView = {
   },
 
   async _saveDetail(id) {
-    const title = document.getElementById('dd-title')?.value.trim();
+    const title     = document.getElementById('dd-title')?.value.trim();
     if (!title) { alert('Zadaj názov.'); return; }
 
     const status    = document.getElementById('dd-status')?.value;
@@ -551,6 +551,28 @@ const pipelineView = {
     const payMethod = document.getElementById('dd-pay-method')?.value || null;
     const payRef    = document.getElementById('dd-pay-ref')?.value    || null;
 
+    // Enforcement checklistu
+    const checks = {
+      contacted:       () => contactId || 'Prirad kontakt pred KONTAKTOVANÝ.',
+      offer_sent:      () => (productId && price > 0) || 'Prirad produkt a nastav cenu pred PONUKOU.',
+      won:             () => (contactId && productId && price > 0) || 'Kontakt, produkt a cena sú povinné pred WON.',
+      payment_pending: () => true,
+      paid:            () => (payMethod && payRef) || 'Spôsob platby a referencia sú povinné pred PAID.',
+    };
+    if (checks[status]) {
+      const result = checks[status]();
+      if (result !== true) { alert('⚠️ ' + result); return; }
+    }
+    if (status === 'lost' || status === 'cancelled') {
+      const deal = this._deals.find(x => x.id === id);
+      if (status === 'lost' && !deal?.loss_reason) {
+        await this._askReason(id, 'lost'); return;
+      }
+      if (status === 'cancelled' && !deal?.cancel_reason) {
+        await this._askReason(id, 'cancelled'); return;
+      }
+    }
+
     // Prepočítaj komisie
     const deal    = this._deals.find(x => x.id === id);
     const product = (app.state.products||[]).find(p => p.id === (productId||deal?.product_id));
@@ -559,16 +581,16 @@ const pipelineView = {
 
     const update = {
       title, status,
-      contact_id:                 contactId,
-      product_id:                 productId,
+      contact_id:                  contactId,
+      product_id:                  productId,
       notes,
-      sale_price_snapshot:        price,
-      cost_snapshot:              cost,
+      sale_price_snapshot:         price,
+      cost_snapshot:               cost,
       commission_percent_snapshot: pct,
       commission_amount_snapshot:  comm,
-      net_profit_snapshot:        price - cost - comm,
-      payment_method:             payMethod,
-      payment_reference:          payRef,
+      net_profit_snapshot:         price - cost - comm,
+      payment_method:              payMethod,
+      payment_reference:           payRef,
     };
 
     const { data, error } = await db.client.from('deals').update(update).eq('id', id).select().single();
@@ -670,28 +692,61 @@ const pipelineView = {
     const btn = document.getElementById('nd-btn');
     if (btn) { btn.disabled = true; btn.textContent = '⏳...'; }
 
-    const pid   = document.getElementById('nd-product')?.value || null;
-    const price = Number(document.getElementById('nd-price')?.value) || 0;
-    const p     = (app.state.products||[]).find(x => x.id === pid);
-    const pct   = p?.commission_percent || 0;
-    const uid   = app._currentUserId();
+    const pid     = document.getElementById('nd-product')?.value || null;
+    const p       = (app.state.products||[]).find(x => x.id === pid);
+    const pct     = p?.commission_percent || 0;
+    const uid     = app._currentUserId();
+    let   price   = Number(document.getElementById('nd-price')?.value) || p?.base_price || 0;
+
+    // Načítaj benefit level kontaktu a uplatni zľavu automaticky
+    let discountPct  = 0;
+    let discountInfo = null;
+    if (contactId) {
+      try {
+        const contact = app.state.contacts.find(c => c.id === contactId);
+        if (contact?.email) {
+          const { data: profile } = await db.client
+            .from('profiles')
+            .select('membership_levels(name,slug,color,discount_pct,applies_to_all_products:benefits(applies_to_all_products))')
+            .eq('email', contact.email)
+            .single();
+          const level = profile?.membership_levels;
+          if (level?.discount_pct > 0) {
+            discountPct  = level.discount_pct;
+            discountInfo = { level: level.name, color: level.color, pct: discountPct };
+            const discounted = round2(price * (1 - discountPct / 100));
+            if (price > 0) {
+              const confirm_msg = `🎁 ${level.name} zľava ${discountPct}%\n\nPôvodná cena: ${price} €\nCena po zľave: ${discounted} €\n\nAplikovať zľavu?`;
+              if (confirm(confirm_msg)) {
+                price = discounted;
+              }
+            }
+          }
+        }
+      } catch(e) { console.warn('Benefit check failed:', e.message); }
+    }
 
     try {
+      const basePrice = p?.base_price || 0;
       const { data, error } = await db.client.from('deals').insert({
         title,
-        contact_id:                 contactId,
-        product_id:                 pid,
-        owner_id:                   uid,
-        created_by:                 uid,
-        source:                     document.getElementById('nd-source')?.value || 'manual',
-        description:                document.getElementById('nd-desc')?.value   || null,
-        status:                     'new',
-        requires_approval:          true,
-        sale_price_snapshot:        price || p?.base_price || 0,
-        cost_snapshot:              p?.cost_price || 0,
+        contact_id:                  contactId,
+        product_id:                  pid,
+        owner_id:                    uid,
+        created_by:                  uid,
+        source:                      document.getElementById('nd-source')?.value || 'manual',
+        description:                 document.getElementById('nd-desc')?.value   || null,
+        status:                      'new',
+        requires_approval:           true,
+        sale_price_snapshot:         price,
+        cost_snapshot:               p?.cost_price || 0,
         commission_percent_snapshot: pct,
-        commission_amount_snapshot:  round2((price||p?.base_price||0) * pct / 100),
-        product_name_snapshot:      p?.name || null,
+        commission_amount_snapshot:  round2(price * pct / 100),
+        net_profit_snapshot:         round2(price - (p?.cost_price||0) - (price * pct / 100)),
+        product_name_snapshot:       p?.name || null,
+        notes: discountInfo
+          ? `Aplikovaná ${discountInfo.level} zľava ${discountInfo.pct}% (pôvodná cena: ${basePrice} €)`
+          : null,
       }).select('*, contacts(name,email), products(name,category,base_price,commission_percent,commission_enabled)')
       .single();
       if (error) throw error;
