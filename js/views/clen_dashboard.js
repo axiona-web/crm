@@ -1,9 +1,12 @@
 // ── views/clen_dashboard.js ───────────────────────────────────────────────────
 
 const clenDashboardView = {
-  _orders:  [],
-  _points:  [],
-  _loaded:  false,
+  _orders:   [],
+  _points:   [],
+  _referrals:[],
+  _profile:  {},
+  _levels:   [],
+  _benefits: [],
 
   render() {
     return `
@@ -14,7 +17,6 @@ const clenDashboardView = {
   },
 
   async afterRender() {
-    this._loaded = false;
     await this._load();
     this._renderContent();
   },
@@ -22,9 +24,10 @@ const clenDashboardView = {
   async _load() {
     const uid = (await db.client.auth.getUser()).data.user?.id;
 
-    // Nájdi contact_id tohto usera cez email
     const { data: profile } = await db.client
-      .from('profiles').select('email, referral_code, points, level, referred_by').eq('id', uid).single();
+      .from('profiles')
+      .select('*, membership_levels(name,slug,color,icon,points_min,points_max,discount_pct)')
+      .eq('id', uid).single();
 
     let contactId = null;
     if (profile?.email) {
@@ -33,58 +36,78 @@ const clenDashboardView = {
       contactId = contact?.id || null;
     }
 
-    const [{ data: orders }, { data: points }, { data: referrals }] = await Promise.all([
+    const [ordersRes, pointsRes, referralsRes, levelsRes] = await Promise.all([
       contactId
-        ? db.client.from('orders').select('*, products(name,category,subcategory)').eq('contact_id', contactId).order('created_at', { ascending:false }).limit(10)
+        ? db.client.from('orders').select('*').eq('contact_id', contactId).order('created_at', { ascending:false }).limit(10)
         : Promise.resolve({ data: [] }),
       db.client.from('point_transactions').select('*').eq('user_id', uid).order('created_at', { ascending:false }).limit(20),
       db.client.from('referrals').select('*, profiles!referrals_referred_user_id_fkey(name,email,created_at)').eq('referrer_user_id', uid),
+      db.client.from('membership_levels').select('*, benefits(*)').eq('is_active', true).order('sort_order'),
     ]);
 
-    this._orders    = orders    || [];
-    this._points    = points    || [];
-    this._referrals = referrals || [];
-    this._profile   = profile   || {};
-    this._loaded    = true;
+    this._orders    = ordersRes.data   || [];
+    this._points    = pointsRes.data   || [];
+    this._referrals = referralsRes.data|| [];
+    this._profile   = profile          || {};
+    this._levels    = levelsRes.data   || [];
   },
 
   _renderContent() {
     const el = document.getElementById('clen-wrap');
     if (!el) return;
 
-    const p         = this._profile || auth.profile || {};
-    const refLink   = `${window.location.origin}${window.location.pathname}?ref=${p.referral_code||''}`;
-    const level     = p.level || 'Základný';
+    const p         = this._profile;
     const points    = p.points || 0;
-    const totalSpent = this._orders.filter(o=>o.status==='completed').reduce((a,o)=>a+(o.value||0),0);
-    const pendPoints = this._points.filter(pt=>pt.status==='pending').reduce((a,pt)=>a+pt.points,0);
+    const pendPoints = this._points.filter(pt=>pt.status==='pending').reduce((a,pt)=>a+(pt.points||0),0);
+    const level     = p.membership_levels;
+    const refLink   = `${window.location.origin}${window.location.pathname}?ref=${p.referral_code||''}`;
+    const totalSpent = this._orders.filter(o=>['paid','in_progress','completed'].includes(o.status)).reduce((a,o)=>a+(o.value||0),0);
 
-    const levelColors = { 'Základný':'var(--muted)', 'Strieborný':'#94a3b8', 'Zlatý':'var(--acc)', 'Platinový':'#a78bfa' };
-    const lColor = levelColors[level] || 'var(--muted)';
+    // Nájdi aktuálnu a nasledujúcu úroveň
+    const currentLevel = level || this._levels[0];
+    const nextLevel    = this._levels.find(l => l.points_min > points);
+    const toNext       = nextLevel ? nextLevel.points_min - points : 0;
+    const progressPct  = nextLevel
+      ? Math.min(100, Math.round((points - (currentLevel?.points_min||0)) / (nextLevel.points_min - (currentLevel?.points_min||0)) * 100))
+      : 100;
 
     el.innerHTML = `
-      <!-- Uvítanie -->
-      <div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,#1a180e,var(--card));border-color:var(--acc-brd);">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+      <!-- Uvítanie + Level -->
+      <div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,#1a180e,var(--card));border-color:${currentLevel?.color||'var(--acc-brd)'}44;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
           <div>
             <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Vitaj späť</div>
             <div style="font-size:20px;font-weight:700;">${esc(p.name||p.email||'')}</div>
-            ${roleBadge('clen')}
+            <div style="margin-top:6px;">
+              ${currentLevel
+                ? `<span style="font-size:14px;font-weight:700;color:${currentLevel.color};">${currentLevel.icon} ${currentLevel.name}</span>`
+                : `<span style="font-size:13px;color:var(--muted);">Základný člen</span>`}
+            </div>
           </div>
-          <div style="text-align:center;">
-            <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Úroveň</div>
-            <div style="font-size:18px;font-weight:700;color:${lColor};">${esc(level)}</div>
+          <div style="text-align:right;">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Moje body</div>
+            <div class="mono" style="font-size:28px;font-weight:700;color:${currentLevel?.color||'var(--acc)'};">${points.toLocaleString('sk-SK')}</div>
+            ${pendPoints > 0 ? `<div style="font-size:11px;color:var(--muted);">+${pendPoints} čakajúcich</div>` : ''}
           </div>
         </div>
+
+        ${nextLevel ? `
+          <div style="margin-top:14px;">
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:5px;">
+              <span>Postup na ${nextLevel.icon} ${nextLevel.name}</span>
+              <span>${toNext.toLocaleString('sk-SK')} bodov chýba</span>
+            </div>
+            <div style="height:6px;background:var(--brd);border-radius:3px;">
+              <div style="height:100%;border-radius:3px;background:linear-gradient(90deg,${currentLevel?.color||'var(--acc)'},${nextLevel.color});width:${progressPct}%;transition:width 0.8s;"></div>
+            </div>
+          </div>` : `
+          <div style="margin-top:12px;font-size:12px;color:${currentLevel?.color||'var(--green)'};">
+            🏆 Si na najvyššej úrovni!
+          </div>`}
       </div>
 
       <!-- KPI -->
-      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px;">
-        <div class="card" style="text-align:center;">
-          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Moje body</div>
-          <div class="mono" style="font-size:22px;font-weight:700;color:var(--acc);">${points}</div>
-          ${pendPoints > 0 ? `<div style="font-size:11px;color:var(--muted);">+${pendPoints} čakajúcich</div>` : ''}
-        </div>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px;">
         <div class="card" style="text-align:center;">
           <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Objednávky</div>
           <div class="mono" style="font-size:22px;font-weight:700;">${this._orders.length}</div>
@@ -99,81 +122,103 @@ const clenDashboardView = {
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
-        <!-- Referral -->
-        <div class="card">
-          <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.06em;">Tvoj referral</div>
-          <div class="mono" style="font-size:22px;font-weight:700;color:var(--acc);letter-spacing:0.1em;margin-bottom:8px;">${esc(p.referral_code||'—')}</div>
-          <div style="font-size:11px;color:var(--muted);margin-bottom:10px;word-break:break-all;">${esc(refLink)}</div>
-          <button class="btn-primary" style="width:100%;font-size:13px;" onclick="clenDashboardView._copy('${esc(refLink)}',this)">
-            📋 Kopírovať link
-          </button>
-          ${p.referred_by_name || p.referred_by ? `
-            <div style="margin-top:10px;font-size:12px;color:var(--muted);">
-              Registrovaný cez: <strong>${esc(p.referred_by_name||'—')}</strong>
-            </div>` : ''}
-        </div>
-
-        <!-- Pozvaní členovia -->
-        <div class="card">
-          <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.06em;">
-            Moji pozvaní (${this._referrals.length})
+      <!-- Benefity aktuálnej úrovne -->
+      ${currentLevel && currentLevel.benefits?.length > 0 ? `
+        <div class="card" style="margin-bottom:14px;border-color:${currentLevel.color}33;">
+          <div style="font-size:12px;font-weight:700;color:${currentLevel.color};margin-bottom:12px;text-transform:uppercase;letter-spacing:0.06em;">
+            ${currentLevel.icon} Tvoje benefity — ${currentLevel.name}
           </div>
-          ${this._referrals.length === 0
-            ? '<div style="color:var(--muted);font-size:13px;">Zatiaľ nikto. Zdieľaj referral link!</div>'
-            : this._referrals.slice(0,5).map(r => `
-              <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--brd);">
-                <div style="font-size:13px;font-weight:600;">${esc(r.profiles?.name||r.profiles?.email||'—')}</div>
-                <div style="font-size:11px;color:var(--muted);">${FMT(r.registered_at)}</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;">
+            ${currentLevel.benefits.filter(b=>b.is_active).map(b => `
+              <div style="background:${currentLevel.color}12;border:1px solid ${currentLevel.color}33;border-radius:8px;padding:10px 12px;">
+                <div style="font-size:13px;font-weight:700;color:${currentLevel.color};">
+                  ${b.type==='discount'?`-${b.value}${b.unit}`:b.type==='cashback'?`${b.value}${b.unit} cashback`:b.type==='priority'?'⚡ Priorita':'✓'}
+                </div>
+                <div style="font-size:12px;font-weight:600;margin-top:3px;">${esc(b.title)}</div>
+                ${b.description?`<div style="font-size:11px;color:var(--muted);margin-top:2px;">${esc(b.description)}</div>`:''}
               </div>`).join('')}
+          </div>
+          ${currentLevel.discount_pct > 0 ? `
+            <div style="margin-top:10px;padding:8px 10px;background:${currentLevel.color}18;border-radius:6px;font-size:12px;color:${currentLevel.color};">
+              💡 Tvoja zľava <strong>${currentLevel.discount_pct}%</strong> sa automaticky uplatní pri každom nákupe.
+            </div>` : ''}
+        </div>` : ''}
+
+      <!-- Všetky úrovne -->
+      <div class="card" style="margin-bottom:14px;">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.06em;">
+          Všetky úrovne
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;">
+          ${this._levels.map(l => {
+            const isActive  = currentLevel?.slug === l.slug;
+            const isPast    = (currentLevel?.points_min||0) > l.points_min;
+            const isFuture  = !isActive && !isPast;
+            return `
+              <div style="border:2px solid ${isActive?l.color:'var(--brd)'};border-radius:10px;padding:12px;opacity:${isFuture?'0.6':'1'};">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                  <span style="font-size:15px;font-weight:700;color:${l.color};">${l.icon} ${l.name}</span>
+                  ${isActive?`<span style="font-size:10px;background:${l.color};color:#000;padding:2px 6px;border-radius:10px;font-weight:700;">AKTÍVNA</span>`:''}
+                  ${isPast?`<span style="font-size:10px;color:var(--green);">✓</span>`:''}
+                </div>
+                <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">
+                  ${l.points_min.toLocaleString('sk-SK')}${l.points_max?` – ${l.points_max.toLocaleString('sk-SK')}`:'+'}  bodov
+                </div>
+                ${l.benefits?.filter(b=>b.is_active).slice(0,3).map(b=>`
+                  <div style="font-size:11px;color:${l.color};margin-bottom:2px;">
+                    ✓ ${b.type==='discount'?`${b.value}${b.unit} zľava`:b.type==='cashback'?`${b.value}${b.unit} cashback`:esc(b.title)}
+                  </div>`).join('')}
+              </div>`;
+          }).join('')}
         </div>
       </div>
 
-      <!-- Objednávky -->
+      <!-- Referral -->
       <div class="card" style="margin-bottom:14px;">
-        <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.06em;">
-          Moje objednávky
+        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.06em;">
+          🔗 Môj referral link
         </div>
-        ${this._orders.length === 0
-          ? '<div style="color:var(--muted);font-size:13px;">Zatiaľ žiadne objednávky</div>'
-          : this._orders.map(o => `
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--brd);">
-              <div>
-                <div style="font-size:13px;font-weight:600;">${esc(o.products?.name||'—')}</div>
-                <div style="font-size:11px;color:var(--muted);">${esc(o.products?.category||'')} ${FMT(o.created_at)}</div>
-              </div>
-              <div style="text-align:right;">
-                ${orderBadge(o.status)}
-                <div class="mono" style="font-size:13px;color:var(--acc);margin-top:3px;">${EUR(o.value)}</div>
-              </div>
-            </div>`).join('')}
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <input readonly value="${refLink}"
+            style="flex:1;font-size:11px;background:var(--inp);border:1px solid var(--brd);border-radius:6px;padding:6px 10px;color:var(--muted);min-width:200px;" />
+          <button class="btn-ghost" style="font-size:12px;white-space:nowrap;"
+            onclick="navigator.clipboard.writeText('${refLink}').then(()=>this.textContent='✓ Skopírované!').catch(()=>{})">
+            📋 Kopírovať
+          </button>
+        </div>
+        ${this._referrals.length > 0 ? `
+          <div style="margin-top:10px;font-size:12px;color:var(--muted);">
+            Pozvaní: ${this._referrals.map(r=>`<strong style="color:var(--txt);">${esc(r.profiles?.name||r.profiles?.email||'—')}</strong>`).join(', ')}
+          </div>` : `
+          <div style="margin-top:8px;font-size:12px;color:var(--muted);">Zatiaľ si nikoho nepozval.</div>`}
       </div>
 
       <!-- História bodov -->
       <div class="card">
-        <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.06em;">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.06em;">
           História bodov
         </div>
         ${this._points.length === 0
-          ? '<div style="color:var(--muted);font-size:13px;">Žiadna história bodov</div>'
-          : this._points.map(pt => `
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--brd);">
-              <div>
-                <div style="font-size:12px;">${esc(pt.note||pt.source_type||'—')}</div>
-                <div style="font-size:11px;color:var(--muted);">${FMT(pt.created_at)} · ${esc(pt.status)}</div>
-              </div>
-              <div class="mono" style="font-size:14px;font-weight:700;color:${pt.points>=0?'var(--green)':'var(--red)'};">
-                ${pt.points>=0?'+':''}${pt.points}
-              </div>
-            </div>`).join('')}
+          ? '<div style="color:var(--muted);font-size:13px;">Zatiaľ žiadne body</div>'
+          : this._points.map(pt => {
+              const sc = {
+                pending:  { label:'Čaká',    color:'var(--acc)'   },
+                approved: { label:'Schválené',color:'var(--green)' },
+                reversed: { label:'Vrátené', color:'var(--red)'   },
+                cancelled:{ label:'Zrušené', color:'var(--muted)' },
+              }[pt.status] || { label:pt.status, color:'var(--muted)' };
+              return `
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--brd);">
+                  <div>
+                    <div style="font-size:13px;">${esc(pt.note||pt.source_type||'Body')}</div>
+                    <div style="font-size:11px;color:var(--muted);">${FMT(pt.created_at)}</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <span class="badge" style="background:${sc.color}18;color:${sc.color};border:1px solid ${sc.color}44;font-size:10px;">${sc.label}</span>
+                    <span class="mono" style="font-weight:700;color:${sc.color};">+${pt.points||0}</span>
+                  </div>
+                </div>`;
+            }).join('')}
       </div>`;
   },
-
-  _copy(link, btn) {
-    navigator.clipboard.writeText(link).then(() => {
-      const o = btn.textContent; btn.textContent = '✓ Skopírované';
-      setTimeout(() => { btn.textContent = o; }, 2000);
-    }).catch(() => { prompt('Link:', link); });
-  },
 };
-

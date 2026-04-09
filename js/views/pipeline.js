@@ -211,7 +211,7 @@ const pipelineView = {
 
   async _onDrop(e, newStatus) {
     e.preventDefault();
-    const id = e.dataTransfer.getData('text/plain') || this._dragging;
+    const id  = e.dataTransfer.getData('text/plain') || this._dragging;
     const col = e.currentTarget;
     col.classList.remove('drag-over');
     if (!id) return;
@@ -219,18 +219,35 @@ const pipelineView = {
     const deal = this._deals.find(d => d.id === id);
     if (!deal || deal.status === newStatus) return;
 
-    // Špeciálne akcie
+    // Validácie pred presunom
+    if (newStatus === 'contacted' && !deal.contact_id) {
+      alert('⚠️ Prirad kontakt pred posunutím na KONTAKTOVANÝ.'); return;
+    }
+    if (newStatus === 'offer_sent' && !deal.product_id) {
+      alert('⚠️ Prirad produkt pred odoslaním PONUKY.'); return;
+    }
+    if (newStatus === 'offer_sent' && !deal.sale_price_snapshot) {
+      alert('⚠️ Nastav cenu pred odoslaním PONUKY.'); return;
+    }
+    if (newStatus === 'won' && (!deal.contact_id || !deal.product_id || !deal.sale_price_snapshot)) {
+      alert('⚠️ Deal musí mať kontakt, produkt a cenu pred WON.'); return;
+    }
+
     if (newStatus === 'paid') {
       if (!await this._confirmPaid(deal)) return;
     }
     if (newStatus === 'cancelled') {
-      const reason = prompt('Dôvod zrušenia (voliteľné):') || '';
-      await this._updateStatus(id, newStatus, { cancel_reason: reason });
+      const reason = prompt('Dôvod zrušenia:');
+      if (reason === null) return;
+      if (!reason.trim()) { alert('Zadaj dôvod zrušenia.'); return; }
+      await this._updateStatus(id, newStatus, { cancel_reason: reason.trim() });
       return;
     }
     if (newStatus === 'lost') {
-      const reason = prompt('Dôvod straty (voliteľné):') || '';
-      await this._updateStatus(id, newStatus, { loss_reason: reason });
+      const reason = prompt('Dôvod straty:');
+      if (reason === null) return;
+      if (!reason.trim()) { alert('Zadaj dôvod straty.'); return; }
+      await this._updateStatus(id, newStatus, { loss_reason: reason.trim() });
       return;
     }
 
@@ -258,7 +275,13 @@ const pipelineView = {
     }
 
     const { error } = await db.client.from('deals').update(update).eq('id', id);
-    if (error) { alert('Chyba: ' + error.message); return; }
+    if (error) {
+      // Zobraz DB validačnú chybu čitateľne
+      const msg = error.message || '';
+      const friendly = msg.includes('musí mať') ? msg.split('ERROR:').pop().trim() : 'Chyba: ' + msg;
+      alert('⚠️ ' + friendly);
+      return;
+    }
 
     deal.status = status;
     Object.assign(deal, extra);
@@ -267,7 +290,7 @@ const pipelineView = {
     this._renderBoard();
 
     if (status === 'paid') {
-      setTimeout(() => alert('✓ Deal označený ako zaplatený!\nKomisia a body boli vytvorené.'), 200);
+      setTimeout(() => alert('✓ Deal zaplatený! Transakcia, komisie a body boli vytvorené.'), 200);
     }
   },
 
