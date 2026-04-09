@@ -92,7 +92,7 @@ const NAV_BY_ROLE = {
     { id: 'queue',       icon: '✅', label: 'Na schválenie'},
     { id: 'members',     icon: '👥', label: 'Členovia'    },
     { id: 'pipeline',    icon: '📊', label: 'Pipeline'    },
-    { id: 'orders',      icon: '📦', label: 'Objednávky'  },
+    { id: 'orders',      icon: '🔄', label: 'Transakcie'  },
     { id: 'commissions', icon: '💰', label: 'Provízie'    },
     { id: 'payouts',     icon: '🧾', label: 'Fakturácia'  },
     { id: 'reporting',   icon: '📈', label: 'Reporting'   },
@@ -106,7 +106,7 @@ const NAV_BY_ROLE = {
     { id: 'obchodnik_dashboard', icon: '⊞', label: 'Dashboard'    },
     { id: 'members',     icon: '👥', label: 'Moji členovia' },
     { id: 'pipeline',    icon: '📊', label: 'Pipeline'     },
-    { id: 'orders',      icon: '📦', label: 'Objednávky'   },
+    { id: 'orders',      icon: '🔄', label: 'Transakcie'   },
     { id: 'commissions', icon: '💰', label: 'Provízie'     },
     { id: 'ai',          icon: '✦', label: 'AI Asistent'  },
     { id: 'profile',     icon: '👤', label: 'Môj profil'   },
@@ -114,7 +114,7 @@ const NAV_BY_ROLE = {
   partner: [
     { id: 'dashboard',   icon: '⊞', label: 'Dashboard'    },
     { id: 'members',     icon: '👥', label: 'Moji klienti' },
-    { id: 'orders',      icon: '📦', label: 'Objednávky'   },
+    { id: 'orders',      icon: '🔄', label: 'Transakcie'   },
     { id: 'profile',     icon: '👤', label: 'Môj profil'   },
   ],
   clen: [
