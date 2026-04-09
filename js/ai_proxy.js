@@ -14,8 +14,8 @@ const aiProxy = {
     const res = await fetch(this._url(), {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'apikey':       this._anonKey(),
+        'Content-Type':  'application/json',
+        'apikey':        this._anonKey(),
         'Authorization': `Bearer ${this._anonKey()}`,
       },
       body: JSON.stringify({ model, max_tokens, system, messages }),
@@ -31,30 +31,8 @@ const aiProxy = {
     return data.content?.find(b => b.type === 'text')?.text || '';
   },
 
-  async saveApiKey(key) {
-    const { error } = await db.client.from('app_settings').upsert({
-      key:        'anthropic_api_key',
-      value:      key,
-      updated_by: app._currentUserId(),
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'key' });
-    if (error) throw error;
-    localStorage.removeItem('axiona_ai_key');
-  },
-
+  // Len config — nie secrets
   async hasKey() {
-    if (localStorage.getItem('axiona_ai_key')) return true;
-    try {
-      const { data } = await db.client.from('app_settings')
-        .select('value').eq('key', 'anthropic_api_key').single();
-      return !!(data?.value);
-    } catch { return false; }
-  },
-
-  async migrateKey() {
-    const localKey = localStorage.getItem('axiona_ai_key');
-    if (!localKey) return false;
-    await this.saveApiKey(localKey);
-    return true;
+    return true; // kľúč je v Edge Function env, vždy dostupný
   },
 };
