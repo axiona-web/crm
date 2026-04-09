@@ -155,13 +155,26 @@ const app = {
     if (el) { el.style.display = 'flex'; }
   },
 
-  saveApiKey() {
+  async saveApiKey() {
     const key = document.getElementById('api-key-input').value.trim();
     if (!key.startsWith('sk-ant-')) { alert('Neplatný kľúč. Musí začínať sk-ant-'); return; }
-    localStorage.setItem('axiona_ai_key', key);
-    const el = document.getElementById('api-setup');
-    if (el) el.style.display = 'none';
-    alert('✓ API kľúč uložený');
+    try {
+      if (typeof aiProxy !== 'undefined') {
+        await aiProxy.saveApiKey(key);
+        alert('✓ API kľúč uložený bezpečne v databáze.');
+      } else {
+        localStorage.setItem('axiona_ai_key', key);
+        alert('✓ API kľúč uložený lokálne.');
+      }
+      const el = document.getElementById('api-setup');
+      if (el) el.style.display = 'none';
+    } catch(e) {
+      // Fallback na localStorage
+      localStorage.setItem('axiona_ai_key', key);
+      alert('✓ API kľúč uložený lokálne (DB nedostupná).');
+      const el = document.getElementById('api-setup');
+      if (el) el.style.display = 'none';
+    }
   },
 
   _appShell() {
@@ -172,11 +185,11 @@ const app = {
       <div id="api-setup" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:2000;align-items:center;justify-content:center;">
         <div class="setup-box">
           <h2 style="margin-bottom:8px;">✦ AI Asistent</h2>
-          <p>Pre AI funkcie zadaj Anthropic API kľúč. Uloží sa len lokálne.</p>
+          <p>Pre AI funkcie zadaj Anthropic API kľúč. Uloží sa bezpečne v databáze.</p>
           <div style="margin-bottom:12px;"><a href="https://console.anthropic.com/keys" target="_blank" style="color:var(--acc);font-size:13px;">→ console.anthropic.com/keys</a></div>
           <div class="form-row"><label class="form-label">API kľúč</label><input id="api-key-input" type="password" placeholder="sk-ant-api03-..." /></div>
           <div style="display:flex;gap:8px;margin-top:12px;">
-            <button class="btn-primary" onclick="app.saveApiKey()">Uložiť</button>
+            <button class="btn-primary" onclick="app.saveApiKey()">Uložiť bezpečne</button>
             <button class="btn-ghost" onclick="document.getElementById('api-setup').style.display='none'">Neskôr</button>
           </div>
         </div>
