@@ -31,10 +31,9 @@ const partnersView = {
   },
 
   async afterRender() {
-    if (!this._loaded) {
-      this._partners = await db.getPartners();
-      this._loaded   = true;
-    }
+    // Vždy načítaj čerstvé dáta
+    this._partners = await db.getPartners();
+    this._loaded   = true;
     this._renderList();
   },
 

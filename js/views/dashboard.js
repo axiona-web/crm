@@ -164,7 +164,16 @@ const dashboardView = {
       </div>`;
   },
 
-  afterRender() {
+  async afterRender() {
+    // Vždy načítaj čerstvé dáta pre dashboard
+    await app._loadData();
+    this._destroyCharts();
+    // Re-render s novými dátami
+    const content = document.getElementById('content');
+    if (content) {
+      const newHtml = this.render();
+      content.innerHTML = newHtml;
+    }
     this._initFunnel();
     this._initDonut();
     this._initMonthly();

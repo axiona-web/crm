@@ -34,6 +34,18 @@ const payoutsView = {
     ]);
     this._batches     = batches || [];
     this._commissions = comms   || [];
+    // Sync do app.state
+    if (comms) {
+      const allComms = await db.client.from('commissions').select('*').order('created_at', { ascending: false });
+      if (allComms.data) app.state.commissions = allComms.data.map(r => ({
+        id: r.id, dealId: r.deal_id, contactId: r.contact_id,
+        ownerId: r.owner_id, order_id: r.order_id,
+        amount: r.amount || 0, rate: r.rate || 0,
+        status: r.status || 'pending', date: r.date || '',
+        notes: r.notes || '', createdAt: r.created_at,
+        approvedBy: r.approved_by, approvedAt: r.approved_at, paidAt: r.paid_at,
+      }));
+    }
   },
 
   _fmt(v) { return Math.round(v||0).toLocaleString('sk-SK') + ' €'; },

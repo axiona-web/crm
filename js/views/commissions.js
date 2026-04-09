@@ -91,9 +91,34 @@ const commissionsView = {
 
   async setStatus(id, status) {
     try {
-      const orig    = app.state.commissions.find(c => c.id === id);
-      const updated = await db.updateCommission(id, { ...orig, status });
-      app.state.commissions = app.state.commissions.map(c => c.id === id ? updated : c);
+      const uid  = app._currentUserId();
+      const now  = new Date().toISOString();
+      const orig = app.state.commissions.find(c => c.id === id);
+
+      // Priamo aktualizuj v DB s timestamps
+      const update = { status };
+      if (status === 'approved') {
+        update.approved_by = uid;
+        update.approved_at = now;
+      }
+      if (status === 'paid') {
+        update.paid_at = now;
+      }
+      if (status === 'cancelled') {
+        update.cancelled_at = now;
+      }
+
+      const { data, error } = await db.client
+        .from('commissions')
+        .update(update)
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+
+      app.state.commissions = app.state.commissions.map(c =>
+        c.id === id ? { ...c, ...update, approvedBy: update.approved_by, approvedAt: update.approved_at } : c
+      );
       app.renderContent();
     } catch(e) { alert('Chyba: ' + e.message); }
   },
