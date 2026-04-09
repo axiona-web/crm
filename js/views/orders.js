@@ -29,8 +29,8 @@ const ordersView = {
 
     return `
       <div class="view-head">
-        <h2>Objednávky</h2>
-        <button class="btn-primary" onclick="ordersView.openAdd()">+ Nová objednávka</button>
+        <h2>🔄 Transakcie</h2>
+        <button class="btn-primary" onclick="ordersView.openAdd()">+ Nová transakcia</button>
       </div>
 
       <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
@@ -167,8 +167,8 @@ const ordersView = {
     if (v && !v.value) v.value = p.base_price || p.price || '';
   },
 
-  openAdd()    { modal.open('Nová objednávka', this._form({ contactId:'', dealId:'', status:'pending_payment', value:'', notes:'' }, true)); },
-  openEdit(id) { const o = (app.state.orders||[]).find(x => x.id === id); if(o) modal.open('Upraviť objednávku', this._form(o, false)); },
+  openAdd()    { modal.open('Nová transakcia', this._form({ contactId:'', dealId:'', status:'pending_payment', value:'', notes:'' }, true)); },
+  openEdit(id) { const o = (app.state.orders||[]).find(x => x.id === id); if(o) modal.open('Upraviť transakciu', this._form(o, false)); },
 
   async quickStatus(id, status) {
     try {
