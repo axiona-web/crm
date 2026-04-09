@@ -313,33 +313,59 @@ const pipelineView = {
     const title = document.getElementById('co-title')?.value.trim();
     if (!title) { alert('Zadaj názov.'); return; }
 
-    const uid = app._currentUserId();
-    try {
-      const { error } = await db.client.from('opportunities').insert({
-        lead_id:        leadId,
-        contact_id:     lead?.contact_id,
-        product_id:     lead?.product_id,
-        created_by:     uid,
-        owner_id:       uid,
-        assigned_to:    document.getElementById('co-assign')?.value || null,
-        title,
-        value:          Number(document.getElementById('co-value')?.value) || 0,
-        probability:    Number(document.getElementById('co-prob')?.value)  || 50,
-        expected_close: document.getElementById('co-close')?.value || null,
-        notes:          document.getElementById('co-notes')?.value || null,
-        status:         'open',
-      });
-      if (error) throw error;
+    const btn = document.querySelector('#modal-body .btn-primary');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Vytváram...'; }
 
-      // Aktualizuj lead status na qualified
-      await db.client.from('leads').update({ status: 'qualified' }).eq('id', leadId);
+    const uid        = app._currentUserId();
+    const assignedTo = document.getElementById('co-assign')?.value || null;
+
+    const obj = {
+      lead_id:        leadId,
+      contact_id:     lead?.contact_id || null,
+      product_id:     lead?.product_id || null,
+      created_by:     uid,
+      owner_id:       uid,
+      assigned_to:    assignedTo,
+      title,
+      value:          Number(document.getElementById('co-value')?.value) || 0,
+      probability:    Number(document.getElementById('co-prob')?.value)  || 50,
+      expected_close: document.getElementById('co-close')?.value || null,
+      notes:          document.getElementById('co-notes')?.value || null,
+      status:         'open',
+    };
+
+    console.log('Inserting opportunity:', obj);
+
+    try {
+      const { data, error } = await db.client
+        .from('opportunities')
+        .insert(obj)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Opportunity insert error:', error);
+        throw new Error(error.message + (error.details ? ' — ' + error.details : ''));
+      }
+
+      console.log('Opportunity created:', data);
+
+      // Aktualizuj lead status
+      await db.client.from('leads')
+        .update({ status: 'qualified' })
+        .eq('id', leadId);
+
       const l = this._leads.find(x => x.id === leadId);
       if (l) l.status = 'qualified';
 
       modal.close();
       await this._load();
       this._switchTab('opps');
-    } catch(e) { alert('Chyba: ' + e.message); }
+    } catch(e) {
+      console.error('Convert error:', e);
+      alert('Chyba pri vytváraní príležitosti:\n' + e.message);
+      if (btn) { btn.disabled = false; btn.textContent = 'Vytvoriť príležitosť'; }
+    }
   },
 
   // ── Formuláre ─────────────────────────────────────────────────────────────
