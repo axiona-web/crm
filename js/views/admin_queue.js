@@ -32,8 +32,8 @@ const adminQueueView = {
       db.client.from('commissions').select('*, profiles!commissions_owner_id_fkey(name,email)').eq('status','pending').order('created_at'),
       db.client.from('point_transactions').select('*, contacts(name,email)').eq('status','pending').order('created_at'),
       db.client.from('orders').select('*, contacts(name), products(name)').eq('status','paid').is('commission_amount_snapshot', null).order('paid_at'),
-      db.client.from('leads').select('*, contacts(name), products(name), profiles!leads_assigned_to_fkey(name)').eq('status','new').order('created_at'),
-      db.client.from('leads').select('*, contacts(name), profiles!leads_assigned_to_fkey(name)').eq('sla_breached', true).neq('status','won').neq('status','lost').neq('status','cancelled').order('sla_due_at'),
+      db.client.from('leads').select('*, contacts(name,email), products(name)').eq('status','new').eq('requires_approval', true).is('approved_at', null).order('created_at'),
+      db.client.from('leads').select('*, contacts(name,email)').eq('sla_breached', true).not('status', 'in', '("lost","cancelled")').order('sla_due_at'),
     ]);
 
     this._data = { pendComm, pendPoints, paidOrders, newLeads, slaLeads };
@@ -146,13 +146,21 @@ const adminQueueView = {
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
             <div>
-              <div style="font-weight:600;font-size:14px;">📊 ${esc(item.contacts?.name||'Neznámy kontakt')}</div>
+              <div style="font-weight:600;font-size:14px;">📋 ${esc(item.title||item.contacts?.name||'Nový lead')}</div>
               <div style="font-size:12px;color:var(--muted);margin-top:3px;">
-                Produkt: ${esc(item.products?.name||'—')} &nbsp;·&nbsp; Zdroj: ${esc(item.source||'—')} &nbsp;·&nbsp; ${fmtDate(item.created_at)}
+                ${item.contacts?.name ? esc(item.contacts.name) + ' &nbsp;·&nbsp; ' : ''}
+                Produkt: ${esc(item.products?.name||'—')} &nbsp;·&nbsp;
+                Zdroj: ${esc(item.source||'—')} &nbsp;·&nbsp;
+                ${fmtDate(item.created_at)}
               </div>
             </div>
             <div style="display:flex;gap:6px;">
-              <button class="btn-ghost" style="font-size:12px;" onclick="app.setView('pipeline')">→ Pipeline</button>
+              <button class="btn-ghost" style="font-size:12px;color:var(--green);"
+                onclick="adminQueueView._approveLead('${item.id}')">✓ Schváliť</button>
+              <button class="btn-ghost" style="font-size:12px;color:var(--red);"
+                onclick="adminQueueView._rejectLead('${item.id}')">✕ Zamietnuť</button>
+              <button class="btn-ghost" style="font-size:12px;"
+                onclick="app.setView('pipeline')">→ Pipeline</button>
             </div>
           </div>
         </div>`;
@@ -173,6 +181,29 @@ const adminQueueView = {
         </div>`;
     }
     return '';
+  },
+
+  async _approveLead(id) {
+    const assignTo = prompt('Priradiť obchodníkovi (email alebo nechaj prázdne):');
+    let userId = null;
+    if (assignTo) {
+      const { data: p } = await db.client.from('profiles').select('id').eq('email', assignTo).single();
+      userId = p?.id || null;
+    }
+    try {
+      await db.client.rpc('approve_lead', { p_lead_id: id, p_assign_to: userId });
+      await this._load();
+    } catch(e) { alert('Chyba: ' + e.message); }
+  },
+
+  async _rejectLead(id) {
+    const reason = prompt('Dôvod zamietnutia:') || 'Nezodpovedá kritériám';
+    try {
+      await db.client.from('leads').update({
+        status: 'cancelled', rejection_reason: reason,
+      }).eq('id', id);
+      await this._load();
+    } catch(e) { alert('Chyba: ' + e.message); }
   },
 
   async _approveComm(id) {
