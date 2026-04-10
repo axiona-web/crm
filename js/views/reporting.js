@@ -25,7 +25,7 @@ const reportingView = {
   async _load() {
     const [dealsRes, commsRes, productsRes, membersRes] = await Promise.all([
       db.client.from('deals')
-        .select('*, profiles!deals_owner_id_fkey(name), contacts(membership_levels(name,slug,color,icon))')
+        .select('*, contacts(membership_levels(name,slug,color,icon))')
         .order('created_at'),
       db.client.from('commissions').select('*, profiles(name,email)').order('created_at'),
       db.client.from('products').select('*').eq('is_active', true),
