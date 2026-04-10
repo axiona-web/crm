@@ -4,13 +4,13 @@ const DEAL_COLS = [
   { key: 'new',             label: 'Nový',           color: '#66668a', group: 'lead'    },
   { key: 'assigned',        label: 'Priradený',      color: '#5ba4f5', group: 'lead'    },
   { key: 'contacted',       label: 'Kontaktovaný',   color: '#a78bfa', group: 'lead'    },
-  { key: 'qualified',       label: 'Kvalifikovaný',  color: '#f0b85a', group: 'qualify' },
   { key: 'offer_sent',      label: 'Ponuka',         color: '#d4943a', group: 'deal'    },
   { key: 'won',             label: 'Vyhraný',        color: '#3ecf8e', group: 'deal'    },
   { key: 'payment_pending', label: 'Čaká platba',    color: '#f59e0b', group: 'payment' },
   { key: 'paid',            label: 'Zaplatený',      color: '#10b981', group: 'payment' },
   { key: 'in_progress',     label: 'V realizácii',   color: '#6366f1', group: 'done'    },
-  { key: 'completed',       label: 'Dokončený',      color: '#3ecf8e', group: 'done'    },
+  { key: 'completed',       label: 'Dokončený',      color: '#22c55e', group: 'done'    },
+  { key: 'commission',      label: 'Komisia',        color: '#f0b85a', group: 'done'    },
 ];
 
 const GROUP_COLORS = {
@@ -458,6 +458,21 @@ const pipelineView = {
         <input id="dd-title" value="${esc(d.title||'')}" /></div>
       <div class="form-row"><label class="form-label">Stav</label>
         <select id="dd-status">${statusOpts}</select></div>
+
+      ${isAdmin && (d.status === 'new' || d.status === 'assigned') ? `
+        <!-- Priradenie exekútora — admin only -->
+        <div style="background:rgba(91,164,245,0.08);border:1px solid rgba(91,164,245,0.3);border-radius:8px;padding:10px 12px;margin-bottom:10px;">
+          <div style="font-size:11px;font-weight:700;color:#5ba4f5;margin-bottom:8px;">👤 Priradenie exekútora</div>
+          <div class="form-row" style="margin-bottom:0;">
+            <label class="form-label">Kto rieši deal?</label>
+            <select id="dd-assigned-to">
+              <option value="">— nepriradený —</option>
+              ${(await db.client.from('profiles').select('id,name,role').in('role',['admin','obchodnik']).then(r=>r.data||[])).map(p=>`<option value="${p.id}"${d.assigned_to===p.id?' selected':''}>${esc(p.name)} (${p.role})</option>`).join('')}
+            </select>
+          </div>
+          ${d.assigned_to ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;">✓ Priradené — deal sa pri uložení presunie do stavu Priradený</div>` : ''}
+        </div>` : ''}
+
       <div class="form-grid-2">
         <div class="form-row"><label class="form-label">Kontakt</label>
           <select id="dd-contact">
@@ -554,39 +569,40 @@ const pipelineView = {
     const title     = document.getElementById('dd-title')?.value.trim();
     if (!title) { toast.error('Zadaj názov dealu.'); return; }
 
-    const status    = document.getElementById('dd-status')?.value;
-    const contactId = document.getElementById('dd-contact')?.value || null;
-    const productId = document.getElementById('dd-product')?.value || null;
-    const price     = Number(document.getElementById('dd-price')?.value)  || 0;
-    const cost      = Number(document.getElementById('dd-cost')?.value)   || 0;
-    const notes     = document.getElementById('dd-notes')?.value   || null;
-    const payMethod = document.getElementById('dd-pay-method')?.value || null;
-    const payRef    = document.getElementById('dd-pay-ref')?.value    || null;
+    const status     = document.getElementById('dd-status')?.value;
+    const assignedTo = document.getElementById('dd-assigned-to')?.value || null;
+    const contactId  = document.getElementById('dd-contact')?.value || null;
+    const productId  = document.getElementById('dd-product')?.value || null;
+    const price      = Number(document.getElementById('dd-price')?.value)  || 0;
+    const cost       = Number(document.getElementById('dd-cost')?.value)   || 0;
+    const notes      = document.getElementById('dd-notes')?.value   || null;
+    const payMethod  = document.getElementById('dd-pay-method')?.value || null;
+    const payRef     = document.getElementById('dd-pay-ref')?.value    || null;
 
-    // Enforcement checklistu — toast namiesto alert
+    // Auto-status: ak admin priradí exekútora a deal je 'new' → presun na 'assigned'
+    const deal       = this._deals.find(x => x.id === id);
+    const finalStatus = (assignedTo && status === 'new') ? 'assigned' : status;
+
+    // Enforcement checklistu
     const checks = {
-      contacted:       () => contactId || 'Prirad kontakt pred KONTAKTOVANÝ.',
-      offer_sent:      () => (productId && price > 0) || 'Prirad produkt a nastav cenu pred PONUKOU.',
+      contacted:       () => contactId || 'Chýba kontakt — prirad klienta pred posunom na Kontaktovaný.',
+      offer_sent:      () => (productId && price > 0) || 'Chýba produkt alebo cena — vyplň pred odoslaním ponuky.',
       won:             () => (contactId && productId && price > 0) || 'Kontakt, produkt a cena sú povinné pred WON.',
       payment_pending: () => true,
-      paid:            () => (payMethod && payRef) || 'Spôsob platby a referencia sú povinné pred PAID.',
+      paid:            () => (payMethod && payRef) || 'Vyplň spôsob platby aj referenciu (č. faktúry / VS) pred PAID.',
     };
-    if (checks[status]) {
-      const result = checks[status]();
+    if (checks[finalStatus]) {
+      const result = checks[finalStatus]();
       if (result !== true) { toast.error(result); return; }
     }
-    if (status === 'lost' || status === 'cancelled') {
-      const deal = this._deals.find(x => x.id === id);
-      if (status === 'lost' && !deal?.loss_reason) {
+    if (finalStatus === 'lost' || finalStatus === 'cancelled') {
+      if (finalStatus === 'lost' && !deal?.loss_reason) {
         await this._askReason(id, 'lost'); return;
       }
-      if (status === 'cancelled' && !deal?.cancel_reason) {
+      if (finalStatus === 'cancelled' && !deal?.cancel_reason) {
         await this._askReason(id, 'cancelled'); return;
       }
     }
-
-    // Snapshot invalidation — ak sa zmení produkt, klient ALEBO CENA, resetni zľavu
-    const deal    = this._deals.find(x => x.id === id);
     const productChanged = deal && productId && deal.product_id !== productId;
     const contactChanged = deal && contactId && deal.contact_id !== contactId;
     const priceChanged   = deal && price > 0 && Math.abs((deal.sale_price_snapshot||0) - price) > 0.01;
@@ -616,7 +632,9 @@ const pipelineView = {
     }
 
     const update = {
-      title, status,
+      title,
+      status:                      finalStatus,
+      assigned_to:                 assignedTo,
       contact_id:                  contactId,
       product_id:                  productId,
       notes,
@@ -941,7 +959,7 @@ const pipelineView = {
           user_id:    uid,
           deal_id:    data.id,
           note:       `${discountSource} — ${discountPct}% zľava — ${EUR ? EUR(discountAmount) : discountAmount + ' €'} ušetrené`,
-        }).catch(e => console.warn('benefit_usage insert failed:', e.message));
+        }).then(() => {}).catch(e => console.warn('benefit_usage insert failed:', e.message));
 
         // Audit log
         db.client.from('audit_logs').insert({
