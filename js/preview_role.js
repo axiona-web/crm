@@ -16,23 +16,32 @@ const previewRole = {
 
   set(role) {
     if (role === auth.profile?.role) {
-      // Ak klikneš na svoju vlastnú rolu, zruš preview
       this.clear();
       return;
     }
     sessionStorage.setItem(this._key, role);
+    // Presmeruj na správny dashboard pre rolu
+    const dashboards = {
+      clen:      'clen_dashboard',
+      partner:   'partner_dashboard',
+      obchodnik: 'obchodnik_dashboard',
+      admin:     'dashboard',
+    };
+    if (dashboards[role]) app.state.view = dashboards[role];
     this._apply();
   },
 
   clear() {
     sessionStorage.removeItem(this._key);
+    // Vráť na admin dashboard
+    app.state.view = 'dashboard';
     this._apply();
   },
 
   _apply() {
-    // Re-render navigácie a obsahu
     app.renderNav();
-    app.renderContent();
     app._updatePreviewBanner();
+    // Načítaj dáta a vyrenderuj
+    app._loadData().then(() => app.renderContent());
   },
 };

@@ -63,12 +63,12 @@ const app = {
   async _loadData() {
     try {
       const [contacts, orders, commissions, products, deals] = await Promise.all([
-        db.getContacts(),
-        db.getOrders(),
-        db.getCommissions(),
+        db.client.from('contacts').select('*').order('created_at', { ascending: false }).then(r => r.data || []),
+        db.client.from('orders').select('*').order('created_at', { ascending: false }).then(r => r.data || []),
+        db.client.from('commissions').select('*, profiles(name,email)').order('created_at', { ascending: false }).then(r => r.data || []),
         db.client.from('products').select('*').order('name').then(r => r.data || []),
         db.client.from('deals')
-          .select('*, contacts(name,email), products(name,category,base_price,commission_percent,commission_enabled)')
+          .select('*, contacts(name,email,phone), products(name,category,base_price,commission_percent,commission_enabled,benefit_eligible,max_discount_pct)')
           .order('created_at', { ascending: false })
           .then(r => r.data || []),
       ]);
