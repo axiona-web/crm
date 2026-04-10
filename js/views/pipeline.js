@@ -138,7 +138,7 @@ const pipelineView = {
     const hasKey   = !!localStorage.getItem('axiona_ai_key');
     const contact  = d.contacts;
     const product  = d.products;
-    const price    = d.sale_price_snapshot || product?.base_price || 0;
+    const price    = (d.discount_amount > 0 ? d.final_price : d.sale_price_snapshot) || product?.base_price || 0;
     const slaWarn  = d.sla_breached || (d.sla_due_at && new Date(d.sla_due_at) < new Date());
     const role     = previewRole.effective() || auth.profile?.role;
     const canMove  = role === 'admin' || d.owner_id === app._currentUserId() || d.assigned_to === app._currentUserId();
@@ -288,10 +288,13 @@ const pipelineView = {
   async _submitPaid(id) {
     const method = document.getElementById('pay-method')?.value;
     const ref    = document.getElementById('pay-ref')?.value?.trim();
-    if (!method) { alert('Vyber spôsob platby.'); return; }
-    if (!ref)    { alert('Zadaj referenciu platby.'); return; }
+    if (!method) { toast.error('Vyber spôsob platby.'); return; }
+    if (!ref)    { toast.error('Zadaj referenciu platby (číslo faktúry alebo VS).'); return; }
+    // Uložíme pred zatvorením modalu
+    const payMethod = method;
+    const payRef    = ref;
     modal.close();
-    await this._updateStatus(id, 'paid', { payment_method: method, payment_reference: ref });
+    await this._updateStatus(id, 'paid', { payment_method: payMethod, payment_reference: payRef });
   },
 
   _askReason(id, type) {
@@ -372,7 +375,7 @@ const pipelineView = {
     const col     = DEAL_COLS.find(c => c.key === d.status);
     const product = d.products;
     const contact = d.contacts;
-    const price   = d.sale_price_snapshot || product?.base_price || 0;
+    const price   = (d.discount_amount > 0 ? d.final_price : d.sale_price_snapshot) || product?.base_price || 0;
     const cost    = d.cost_snapshot || product?.cost_price || 0;
     const comm    = d.commission_amount_snapshot || 0;
     const net     = price - cost - comm;
@@ -571,8 +574,8 @@ const pipelineView = {
 
     const status     = document.getElementById('dd-status')?.value;
     const assignedTo = document.getElementById('dd-assigned-to')?.value || null;
-    const contactId  = document.getElementById('dd-contact')?.value || null;
-    const productId  = document.getElementById('dd-product')?.value || null;
+    const contactId  = document.getElementById('dd-contact')?.value || deal?.contact_id || null;
+    const productId  = document.getElementById('dd-product')?.value || deal?.product_id || null;
     const price      = Number(document.getElementById('dd-price')?.value)  || 0;
     const cost       = Number(document.getElementById('dd-cost')?.value)   || 0;
     const notes      = document.getElementById('dd-notes')?.value   || null;
@@ -605,7 +608,8 @@ const pipelineView = {
     }
     const productChanged = deal && productId && deal.product_id !== productId;
     const contactChanged = deal && contactId && deal.contact_id !== contactId;
-    const priceChanged   = deal && price > 0 && Math.abs((deal.sale_price_snapshot||0) - price) > 0.01;
+    const effectiveDealPrice = (deal?.discount_amount > 0 ? deal?.final_price : deal?.sale_price_snapshot) || 0;
+    const priceChanged   = deal && price > 0 && Math.abs(effectiveDealPrice - price) > 0.01;
     const needsReset     = (productChanged || contactChanged || priceChanged) && (deal?.discount_amount||0) > 0;
 
     if (needsReset) {
