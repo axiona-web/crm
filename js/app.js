@@ -103,11 +103,11 @@ const app = {
       </button>`).join('');
   },
 
-  renderContent() {
+  async renderContent() {
     const view = VIEWS[this.state.view];
     if (!view) return;
     document.getElementById('content').innerHTML = view.render();
-    if (view.afterRender) view.afterRender();
+    if (view.afterRender) await view.afterRender();
   },
 
   updateFooter() {
