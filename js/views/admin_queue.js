@@ -32,8 +32,8 @@ const adminQueueView = {
       db.client.from('commissions').select('*, profiles(name,email)').eq('status','pending').order('created_at'),
       db.client.from('point_transactions').select('*, contacts(name,email)').eq('status','pending').order('created_at'),
       db.client.from('orders').select('*, contacts(name), products(name)').eq('status','paid').is('commission_amount_snapshot', null).order('paid_at'),
-      db.client.from('leads').select('*, contacts(name,email), products(name)').eq('status','new').eq('requires_approval', true).is('approved_at', null).order('created_at'),
-      db.client.from('leads').select('*, contacts(name,email)').eq('sla_breached', true).not('status', 'in', '("lost","cancelled")').order('sla_due_at'),
+      db.client.from('deals').select('*, contacts(name,email), products(name), profiles!deals_owner_id_fkey(name)').eq('status','new').eq('requires_approval', true).is('reviewed_at', null).order('created_at'),
+      db.client.from('deals').select('*, contacts(name,email)').eq('sla_breached', true).not('status', 'in', '("lost","cancelled")').order('sla_due_at'),
     ]);
 
     this._data = { pendComm, pendPoints, paidOrders, newLeads, slaLeads };
@@ -142,23 +142,36 @@ const adminQueueView = {
     }
 
     if (type === 'lead') {
+      const isMarketplace = item.source === 'marketplace';
+      const hasDiscount   = (item.discount_amount||0) > 0;
       return `
-        <div class="card">
+        <div class="card" style="border-color:${isMarketplace?'rgba(91,164,245,0.35)':'var(--brd)'};">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
-            <div>
-              <div style="font-weight:600;font-size:14px;">📋 ${esc(item.title||item.contacts?.name||'Nový lead')}</div>
-              <div style="font-size:12px;color:var(--muted);margin-top:3px;">
-                ${item.contacts?.name ? esc(item.contacts.name) + ' &nbsp;·&nbsp; ' : ''}
-                Produkt: ${esc(item.products?.name||'—')} &nbsp;·&nbsp;
-                Zdroj: ${esc(item.source||'—')} &nbsp;·&nbsp;
+            <div style="flex:1;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                ${isMarketplace ? `<span style="background:rgba(91,164,245,0.15);color:#5ba4f5;border:1px solid rgba(91,164,245,0.4);font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;">🛍 Marketplace</span>` : ''}
+                <div style="font-weight:600;font-size:14px;">📋 ${esc(item.title||item.contacts?.name||'Nový deal')}</div>
+              </div>
+              <div style="font-size:12px;color:var(--muted);">
+                ${item.contacts?.name ? `👤 ${esc(item.contacts.name)} &nbsp;·&nbsp; ` : ''}
+                🛍 ${esc(item.products?.name||item.product_name_snapshot||'—')} &nbsp;·&nbsp;
                 ${fmtDate(item.created_at)}
               </div>
+              <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap;">
+                <span class="mono" style="font-size:13px;font-weight:700;color:var(--acc);">${EUR(item.sale_price_snapshot||0)}</span>
+                ${hasDiscount ? `
+                  <span style="font-size:11px;color:var(--green);">🎁 Zľava ${item.discount_percent}% (−${EUR(item.discount_amount)})</span>
+                  <span style="font-size:11px;color:var(--muted);text-decoration:line-through;">${EUR(item.base_price||0)}</span>` : ''}
+                ${item.discount_source ? `<span style="font-size:11px;color:var(--muted);">Zdroj: ${esc(item.discount_source)}</span>` : ''}
+              </div>
             </div>
-            <div style="display:flex;gap:6px;">
-              <button class="btn-ghost" style="font-size:12px;color:var(--green);"
-                onclick="adminQueueView._approveLead('${item.id}')">✓ Schváliť</button>
-              <button class="btn-ghost" style="font-size:12px;color:var(--red);"
-                onclick="adminQueueView._rejectLead('${item.id}')">✕ Zamietnuť</button>
+            <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
+              <div style="display:flex;gap:6px;">
+                <button class="btn-ghost" style="font-size:12px;color:var(--green);"
+                  onclick="adminQueueView._approveLead('${item.id}')">✓ Schváliť</button>
+                <button class="btn-ghost" style="font-size:12px;color:var(--red);"
+                  onclick="adminQueueView._rejectLead('${item.id}')">✕ Zamietnuť</button>
+              </div>
               <button class="btn-ghost" style="font-size:12px;"
                 onclick="app.setView('pipeline')">→ Pipeline</button>
             </div>

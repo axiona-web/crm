@@ -427,6 +427,10 @@ const marketplaceView = {
     if (!name)  { toast.error('Zadaj meno.'); return; }
     if (!email) { toast.error('Zadaj email.'); return; }
 
+    // Anti-duplicate protection
+    const btn = document.querySelector('#modal-body .btn-primary');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Odosielam...'; }
+
     discountPct  = Number(discountPct);
     finalPrice   = Number(finalPrice);
     discountAmt  = Number(discountAmt);
@@ -477,7 +481,12 @@ const marketplaceView = {
       margin_override:             false,
     }).select().single();
 
-    if (error) { toast.error('Chyba pri odoslaní: ' + error.message); return; }
+    if (error) {
+      toast.error('Chyba pri odoslaní: ' + error.message);
+      const btn2 = document.querySelector('#modal-body .btn-primary');
+      if (btn2) { btn2.disabled = false; btn2.textContent = '📨 Odoslať záujem'; }
+      return;
+    }
 
     // Benefit usage log
     if (discountPct > 0) {
