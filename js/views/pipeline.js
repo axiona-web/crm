@@ -585,17 +585,16 @@ const pipelineView = {
       }
     }
 
-    // Snapshot invalidation — ak sa zmení produkt alebo klient, resetni zľavu
+    // Snapshot invalidation — ak sa zmení produkt, klient ALEBO CENA, resetni zľavu
     const deal    = this._deals.find(x => x.id === id);
     const productChanged = deal && productId && deal.product_id !== productId;
     const contactChanged = deal && contactId && deal.contact_id !== contactId;
-    if ((productChanged || contactChanged) && deal?.discount_amount > 0) {
-      toast.warning('Produkt alebo klient sa zmenil — benefit zľava bola resetnutá. Vytvor nový deal pre aplikáciu zľavy.');
-      // Reset zľavy
-      Object.assign(deal, {
-        discount_percent: 0, discount_amount: 0,
-        discount_source: null, discount_applied_by: null, discount_applied_at: null,
-      });
+    const priceChanged   = deal && price > 0 && Math.abs((deal.sale_price_snapshot||0) - price) > 0.01;
+    const needsReset     = (productChanged || contactChanged || priceChanged) && (deal?.discount_amount||0) > 0;
+
+    if (needsReset) {
+      const reason = productChanged ? 'Produkt' : contactChanged ? 'Klient' : 'Cena';
+      toast.warning(`${reason} sa zmenil — benefit zľava bola resetnutá. Pre novú zľavu vytvor nový deal.`);
     }
 
     // Prepočítaj komisie
@@ -628,8 +627,8 @@ const pipelineView = {
       net_profit_snapshot:         price - cost - comm,
       payment_method:              payMethod,
       payment_reference:           payRef,
-      // Reset zľavy ak sa zmenil produkt/klient
-      ...(productChanged || contactChanged ? {
+      // Reset zľavy ak sa zmenil produkt/klient/cena
+      ...(needsReset ? {
         discount_percent:    0,
         discount_amount:     0,
         discount_source:     null,
@@ -661,7 +660,7 @@ const pipelineView = {
     this._deals = this._deals.map(d => d.id === id ? {...d,...update} : d);
     modal.close();
     this._renderBoard();
-    toast.success('Deal uložený.');
+    toast.success('Zmeny uložené.');
   },
 
   async _deleteDeal(id) {

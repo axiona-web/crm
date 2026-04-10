@@ -36,13 +36,17 @@ const clenDashboardView = {
       contactId = contact?.id || null;
     }
 
-    const [ordersRes, pointsRes, referralsRes, levelsRes] = await Promise.all([
+    const monthStart = new Date();
+    monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+
+    const [ordersRes, pointsRes, referralsRes, levelsRes, usageRes] = await Promise.all([
       contactId
         ? db.client.from('orders').select('*').eq('contact_id', contactId).order('created_at', { ascending:false }).limit(10)
         : Promise.resolve({ data: [] }),
       db.client.from('point_transactions').select('*').eq('user_id', uid).order('created_at', { ascending:false }).limit(20),
       db.client.from('referrals').select('*, profiles!referrals_referred_user_id_fkey(name,email,created_at)').eq('referrer_user_id', uid),
       db.client.from('membership_levels').select('*, benefits(*)').eq('is_active', true).order('sort_order'),
+      db.client.from('benefit_usage').select('*').eq('user_id', uid).gte('created_at', monthStart.toISOString()),
     ]);
 
     this._orders    = ordersRes.data   || [];
@@ -50,6 +54,7 @@ const clenDashboardView = {
     this._referrals = referralsRes.data|| [];
     this._profile   = profile          || {};
     this._levels    = levelsRes.data   || [];
+    this._usageThisMonth = usageRes.data || [];
   },
 
   _renderContent() {
@@ -142,6 +147,36 @@ const clenDashboardView = {
             <div style="margin-top:10px;padding:8px 10px;background:${currentLevel.color}18;border-radius:6px;font-size:12px;color:${currentLevel.color};">
               💡 Tvoja zľava <strong>${currentLevel.discount_pct}%</strong> sa automaticky uplatní pri každom nákupe.
             </div>` : ''}
+
+          <!-- Benefit usage transparency -->
+          ${(() => {
+            const usedCount   = (this._usageThisMonth||[]).length;
+            const monthLimit  = 3;
+            const remaining   = Math.max(0, monthLimit - usedCount);
+            const resetDate   = new Date();
+            resetDate.setMonth(resetDate.getMonth()+1); resetDate.setDate(1);
+            const resetStr    = resetDate.toLocaleDateString('sk-SK',{month:'long',day:'numeric'});
+            const pct         = Math.min(100, Math.round(usedCount/monthLimit*100));
+            const barColor    = remaining > 1 ? currentLevel.color : remaining === 1 ? 'var(--acc)' : 'var(--red)';
+            return `
+              <div style="margin-top:10px;padding:10px 12px;background:var(--inp);border:1px solid var(--brd);border-radius:8px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                  <span style="font-size:12px;font-weight:600;">Benefity tento mesiac</span>
+                  <span style="font-size:11px;color:var(--muted);">Reset: ${resetStr}</span>
+                </div>
+                <div style="background:var(--brd);border-radius:4px;height:6px;margin-bottom:6px;overflow:hidden;">
+                  <div style="height:100%;border-radius:4px;background:${barColor};width:${pct}%;transition:width 0.3s;"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:12px;">
+                  <span style="color:var(--muted);">Použité: <strong>${usedCount}/${monthLimit}</strong></span>
+                  <span style="color:${barColor};font-weight:700;">${remaining > 0 ? `Zostatok: ${remaining}×` : '⚠ Limit vyčerpaný'}</span>
+                </div>
+                ${usedCount > 0 ? `
+                  <div style="margin-top:8px;font-size:11px;color:var(--muted);">
+                    ${(this._usageThisMonth||[]).slice(-3).map(u=>`<div>• ${esc(u.note||'Benefit použitý')} · ${FMT(u.created_at)}</div>`).join('')}
+                  </div>` : ''}
+              </div>`;
+          })()}
         </div>` : ''}
 
       <!-- Všetky úrovne -->

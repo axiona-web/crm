@@ -114,6 +114,33 @@ const reportingView = {
       else memberLevels['none']++;
     });
 
+    // Override reporting
+    const overrideDeals    = paidDeals.filter(d => d.margin_override);
+    const overrideRevenue  = overrideDeals.reduce((a,d) => a+(d.sale_price_snapshot||0), 0);
+    const overrideNet      = overrideDeals.reduce((a,d) => a+(d.net_profit_snapshot||0), 0);
+    const overrideByUser   = {};
+    overrideDeals.forEach(d => {
+      const name = d.profiles?.name || 'Admin';
+      if (!overrideByUser[name]) overrideByUser[name] = { count:0, revenue:0 };
+      overrideByUser[name].count++;
+      overrideByUser[name].revenue += d.sale_price_snapshot || 0;
+    });
+
+    // Časové benefit metriky — zľavy za posledných 6 mesiacov
+    const now6 = new Date();
+    const benefitMonths = [];
+    for (let i=5;i>=0;i--) {
+      const d   = new Date(now6.getFullYear(), now6.getMonth()-i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      const mDeals = deals.filter(x=>(x.paid_at||x.created_at||'').startsWith(key) && ['paid','in_progress','completed'].includes(x.status));
+      benefitMonths.push({
+        label:    d.toLocaleDateString('sk-SK',{month:'short'}),
+        discount: mDeals.reduce((a,x)=>a+(x.discount_amount||0),0),
+        net:      mDeals.reduce((a,x)=>a+(x.net_profit_snapshot||0),0),
+        count:    mDeals.filter(x=>x.discount_amount>0).length,
+      });
+    }
+
     const convRate = closedDeals.length ? Math.round((closedDeals.length - lostDeals.length) / closedDeals.length * 100) : 0;
 
     // Pipeline konverzie — % čo prešlo z jedného stavu do ďalšieho
@@ -485,6 +512,67 @@ const reportingView = {
                     </div>
                   </div>`;
               }).join('')}
+        </div>
+      </div>
+
+      <!-- Override dealy + benefit trend -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+
+        <!-- Override dealy -->
+        <div class="card" style="${overrideDeals.length>0?'border-color:rgba(242,85,85,0.3);':''}">
+          <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px;">
+            ⚠ Override dealy (nízka marža)
+          </div>
+          ${overrideDeals.length === 0
+            ? '<div style="color:var(--green);font-size:13px;">✓ Žiadne override dealy</div>'
+            : `
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">
+                <div style="text-align:center;background:rgba(242,85,85,0.1);border:1px solid rgba(242,85,85,0.3);border-radius:8px;padding:8px;">
+                  <div style="font-size:10px;color:var(--red);margin-bottom:2px;">Počet</div>
+                  <div class="mono" style="font-size:18px;font-weight:700;color:var(--red);">${overrideDeals.length}</div>
+                </div>
+                <div style="text-align:center;background:var(--inp);border:1px solid var(--brd);border-radius:8px;padding:8px;">
+                  <div style="font-size:10px;color:var(--muted);margin-bottom:2px;">Obrat</div>
+                  <div class="mono" style="font-size:14px;font-weight:700;">${fmt(overrideRevenue)}</div>
+                </div>
+                <div style="text-align:center;background:var(--inp);border:1px solid var(--brd);border-radius:8px;padding:8px;">
+                  <div style="font-size:10px;color:var(--muted);margin-bottom:2px;">Zisk</div>
+                  <div class="mono" style="font-size:14px;font-weight:700;color:${overrideNet>=0?'var(--green)':'var(--red)'};">${fmt(overrideNet)}</div>
+                </div>
+              </div>
+              ${Object.entries(overrideByUser).sort((a,b)=>b[1].count-a[1].count).map(([name,s]) => `
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--brd);font-size:12px;">
+                  <span>${esc(name)}</span>
+                  <div style="display:flex;gap:10px;">
+                    <span class="mono" style="color:var(--red);font-weight:700;">${s.count}×</span>
+                    <span class="mono">${fmt(s.revenue)}</span>
+                  </div>
+                </div>`).join('')}`}
+        </div>
+
+        <!-- Benefit trend za 6 mesiacov -->
+        <div class="card">
+          <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px;">
+            📅 Trend zliav — posledných 6 mesiacov
+          </div>
+          ${benefitMonths.every(m=>m.discount===0)
+            ? '<div style="color:var(--muted);font-size:13px;">Žiadne benefit zľavy</div>'
+            : (() => {
+                const max = Math.max(...benefitMonths.map(m=>m.discount), 1);
+                return benefitMonths.map(m => `
+                  <div style="margin-bottom:8px;">
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+                      <span style="color:var(--muted);">${m.label}</span>
+                      <div style="display:flex;gap:10px;">
+                        ${m.count>0?`<span style="color:var(--purple);">-${fmt(m.discount)}</span>`:'<span style="color:var(--muted);">—</span>'}
+                        <span style="color:var(--green);">${fmt(m.net)}</span>
+                      </div>
+                    </div>
+                    <div style="background:var(--inp);border-radius:4px;height:5px;overflow:hidden;">
+                      <div style="background:var(--purple);height:100%;width:${Math.round(m.discount/max*100)}%;border-radius:4px;"></div>
+                    </div>
+                  </div>`).join('');
+              })()}
         </div>
       </div>
 
