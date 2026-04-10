@@ -401,14 +401,31 @@ const payoutsView = {
   },
 
   async _markPaid(id) {
-    const date = prompt('Dátum úhrady:', new Date().toISOString().slice(0,10));
-    if (!date) return;
+    const today = new Date().toISOString().slice(0,10);
+    const inv   = this._invoices.find(i => i.id === id);
+    modal.open('✓ Označiť faktúru ako uhradenú', `
+      <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">
+        Faktúra: <strong>${esc(inv?.invoice_number||'—')}</strong>
+        · Suma: <strong>${this._fmt(inv?.amount_inc_vat||0)}</strong>
+      </div>
+      <div class="form-row"><label class="form-label">Dátum úhrady</label>
+        <input id="paid-date" type="date" value="${today}" /></div>
+      <div class="form-actions">
+        <button class="btn-primary" style="background:var(--green);" onclick="payoutsView._submitMarkPaid('${id}')">✓ Potvrdiť úhradu</button>
+        <button class="btn-ghost" onclick="modal.close()">Zrušiť</button>
+      </div>`);
+  },
+
+  async _submitMarkPaid(id) {
+    const date = document.getElementById('paid-date')?.value;
+    if (!date) { toast.error('Zadaj dátum úhrady.'); return; }
     const { error } = await db.client.from('invoices')
       .update({ status: 'paid', paid_date: date }).eq('id', id);
-    if (error) { alert('Chyba: ' + error.message); return; }
+    if (error) { toast.error('Chyba: ' + error.message); return; }
     const inv = this._invoices.find(i => i.id === id);
     if (inv) { inv.status = 'paid'; inv.paid_date = date; }
     modal.close();
+    toast.success('Faktúra označená ako uhradená. Deal bol presunutý na Zaplatený.');
     this._render();
   },
 

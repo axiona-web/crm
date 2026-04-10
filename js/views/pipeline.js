@@ -244,6 +244,13 @@ const pipelineView = {
     if (newStatus === 'won' && (!deal.contact_id || !deal.product_id || !deal.sale_price_snapshot)) {
       toast.error('Deal musí mať kontakt, produkt a cenu pred WON.'); return;
     }
+    if (newStatus === 'won') {
+      // Trigger automaticky vytvorí faktúru a presunie na payment_pending
+      toast.info('Deal WON — faktúra bude vytvorená automaticky a deal prejde na Čaká platba.');
+    }
+    if (newStatus === 'payment_pending') {
+      toast.warning('Stav Čaká platba sa nastavuje automaticky po WON cez faktúru.'); return;
+    }
 
     if (newStatus === 'paid') {
       await this._askPaid(id, deal);
@@ -410,11 +417,14 @@ const pipelineView = {
     const clientProfile = contactProfileRes.data;
     const clientLevel   = clientProfile?.membership_levels;
 
-    const statusOpts = DEAL_COLS.map(c =>
-      `<option value="${c.key}"${d.status===c.key?' selected':''}>${c.label}</option>`
-    ).join('') +
-    `<option value="lost"${d.status==='lost'?' selected':''}>❌ Stratený</option>
-     <option value="cancelled"${d.status==='cancelled'?' selected':''}>🚫 Zrušený</option>`;
+    const statusOpts = DEAL_COLS
+      .filter(c => !['payment_pending','paid'].includes(c.key))
+      .map(c => `<option value="${c.key}"${d.status===c.key?' selected':''}>${c.label}</option>`)
+      .join('') +
+      `<option value="payment_pending"${d.status==='payment_pending'?' selected':''} disabled>⏳ Čaká platba (auto)</option>
+       <option value="paid"${d.status==='paid'?' selected':''} disabled>✓ Zaplatený (cez faktúru)</option>
+       <option value="lost"${d.status==='lost'?' selected':''}>❌ Stratený</option>
+       <option value="cancelled"${d.status==='cancelled'?' selected':''}>🚫 Zrušený</option>`;
 
     const payMethods = { bank_transfer:'Bankový prevod', card:'Karta', cash:'Hotovosť', invoice:'Faktúra' };
 
@@ -591,7 +601,7 @@ const pipelineView = {
       contacted:       () => contactId || 'Chýba kontakt — prirad klienta pred posunom na Kontaktovaný.',
       offer_sent:      () => (productId && price > 0) || 'Chýba produkt alebo cena — vyplň pred odoslaním ponuky.',
       won:             () => (contactId && productId && price > 0) || 'Kontakt, produkt a cena sú povinné pred WON.',
-      payment_pending: () => true,
+      payment_pending: () => 'Stav Čaká platba sa nastavuje automaticky po WON cez faktúru.',
       paid:            () => (payMethod && payRef) || 'Vyplň spôsob platby aj referenciu (č. faktúry / VS) pred PAID.',
     };
     if (checks[finalStatus]) {
