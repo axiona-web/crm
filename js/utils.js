@@ -98,6 +98,7 @@ const NAV_BY_ROLE = {
     { id: 'reporting',   icon: '📈', label: 'Reporting'   },
     { id: 'partners',    icon: '🤝', label: 'Tím'         },
     { id: 'products',    icon: '🛍️', label: 'Produkty'    },
+    { id: 'marketplace', icon: '🏪', label: 'Marketplace'  },
     { id: 'calc',        icon: '🧮', label: 'Kalkulačka'  },
     { id: 'ai',          icon: '✦', label: 'AI Asistent' },
     { id: 'profile',     icon: '👤', label: 'Môj profil'  },
@@ -119,8 +120,10 @@ const NAV_BY_ROLE = {
     { id: 'profile',           icon: '👤', label: 'Môj profil'   },
   ],
   clen: [
-    { id: 'clen_dashboard', icon: '⊞', label: 'Prehľad'    },
-    { id: 'profile',        icon: '👤', label: 'Môj profil' },
+    { id: 'clen_dashboard',      icon: '⊞', label: 'Prehľad'    },
+    { id: 'marketplace',         icon: '🛍', label: 'Marketplace' },
+    { id: 'marketplace_orders',  icon: '📋', label: 'Moje dopyty' },
+    { id: 'profile',             icon: '👤', label: 'Môj profil' },
   ],
 };
 

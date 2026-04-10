@@ -17,6 +17,8 @@ const VIEWS = {
   clen_dashboard:       clenDashboardView,
   partner_dashboard:    partnerDashboardView,
   obchodnik_dashboard:  obchodnikDashboardView,
+  marketplace:          marketplaceView,
+  marketplace_orders:   marketplaceOrdersView,
 };
 
 const app = {
