@@ -790,39 +790,32 @@ const pipelineView = {
 
             // Modal potvrdenie namiesto confirm()
             discountApply = await new Promise(resolve => {
-              modal.open('🎁 Členská zľava', `
-                <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">
-                  Kontakt má aktívnu člensku úroveň.
+              // Inline potvrdenie — nezatvára modal s dealem
+              const existing = document.getElementById('discount-confirm-bar');
+              if (existing) existing.remove();
+
+              const bar = document.createElement('div');
+              bar.id = 'discount-confirm-bar';
+              bar.style.cssText = 'background:linear-gradient(135deg,#0a1f12,var(--card));border:1px solid rgba(62,207,142,0.4);border-radius:8px;padding:12px 14px;margin-bottom:10px;';
+              bar.innerHTML = `
+                <div style="font-size:12px;font-weight:700;color:var(--green);margin-bottom:8px;">🎁 ${level.name} zľava ${discountPct}%</div>
+                <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;">
+                  <div style="font-size:13px;"><span style="text-decoration:line-through;color:var(--muted);">${EUR(price)}</span> → <strong style="color:var(--green);">${EUR(finalPrice)}</strong> <span style="color:var(--muted);font-size:11px;">(ušetrí ${EUR(discountAmount)})</span></div>
                 </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
-                  <div style="background:var(--inp);border:1px solid var(--brd);border-radius:8px;padding:10px;text-align:center;">
-                    <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Pôvodná cena</div>
-                    <div class="mono" style="font-size:18px;font-weight:700;text-decoration:line-through;color:var(--muted);">${EUR(price)}</div>
-                  </div>
-                  <div style="background:linear-gradient(135deg,#0a1f12,var(--card));border:1px solid rgba(62,207,142,0.3);border-radius:8px;padding:10px;text-align:center;">
-                    <div style="font-size:10px;color:var(--green);margin-bottom:3px;">Po zľave ${discountPct}%</div>
-                    <div class="mono" style="font-size:18px;font-weight:700;color:var(--green);">${EUR(finalPrice)}</div>
-                  </div>
-                </div>
-                <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
-                  Úroveň: <strong style="color:${level.color};">${level.name}</strong>
-                  · Zľava: <strong>${discountPct}%</strong>
-                  · Ušetrí: <strong>${EUR(discountAmount)}</strong>
-                </div>
-                <div class="form-actions">
-                  <button class="btn-primary" style="background:var(--green);" onclick="modal.close();window._discountChoice=true;">✓ Aplikovať zľavu</button>
-                  <button class="btn-ghost" onclick="modal.close();window._discountChoice=false;">Bez zľavy</button>
-                </div>`);
-              // Počkaj na klik
-              const check = setInterval(() => {
-                if (window._discountChoice !== undefined) {
-                  clearInterval(check);
-                  const v = window._discountChoice;
-                  delete window._discountChoice;
-                  resolve(v);
-                }
-              }, 100);
-              setTimeout(() => { clearInterval(check); resolve(false); }, 10000);
+                <div style="display:flex;gap:8px;">
+                  <button id="apply-discount-yes" class="btn-primary" style="font-size:12px;padding:6px 14px;background:var(--green);">✓ Aplikovať zľavu</button>
+                  <button id="apply-discount-no" class="btn-ghost" style="font-size:12px;padding:6px 14px;">Bez zľavy</button>
+                </div>`;
+
+              // Vlož pred form-actions
+              const formActions = document.querySelector('#modal-body .form-actions');
+              if (formActions) formActions.before(bar);
+              else document.getElementById('modal-body')?.appendChild(bar);
+
+              document.getElementById('apply-discount-yes').onclick = () => { bar.remove(); resolve(true); };
+              document.getElementById('apply-discount-no').onclick  = () => { bar.remove(); resolve(false); };
+
+              setTimeout(() => { bar.remove(); resolve(false); }, 30000);
             });
           }
         }
@@ -866,31 +859,31 @@ const pipelineView = {
       const isAdmin = role === 'admin';
       const overrideGranted = isAdmin
         ? await new Promise(resolve => {
-            modal.open('🚨 Nízka marža — Admin override', `
-              <div style="background:rgba(242,85,85,0.1);border:1px solid rgba(242,85,85,0.4);border-radius:8px;padding:12px;margin-bottom:14px;">
-                <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:6px;">Marža ${marginPct}% je pod minimom ${BLOCK_THRESHOLD}%</div>
-                <div style="font-size:12px;color:var(--muted);">Cena: ${EUR ? EUR(effectivePrice) : effectivePrice} € · Náklad: ${EUR ? EUR(costVal) : costVal} € · Komisie: ${EUR ? EUR(commAmount) : commAmount} €</div>
+            const existing = document.getElementById('override-bar');
+            if (existing) existing.remove();
+            const bar = document.createElement('div');
+            bar.id = 'override-bar';
+            bar.style.cssText = 'background:rgba(242,85,85,0.1);border:1px solid rgba(242,85,85,0.4);border-radius:8px;padding:12px 14px;margin-bottom:10px;';
+            bar.innerHTML = `
+              <div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:6px;">🚨 Marža ${marginPct}% — pod minimom ${BLOCK_THRESHOLD}%</div>
+              <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Cena: ${EUR(effectivePrice)} · Náklad: ${EUR(costVal)} · Zisk: ${EUR(netProfit)}</div>
+              <div class="form-row" style="margin-bottom:8px;">
+                <input id="override-reason-input" placeholder="Dôvod override (povinný)..." style="font-size:12px;" />
               </div>
-              <div class="form-row"><label class="form-label">Dôvod override (povinný)</label>
-                <textarea id="override-reason" style="min-height:60px;" placeholder="Prečo schvaľuješ tento deal napriek nízkej marži?"></textarea></div>
-              <div class="form-actions">
-                <button class="btn-primary" style="background:var(--red);" onclick="
-                  const r=document.getElementById('override-reason')?.value?.trim();
-                  if(!r){toast.error('Zadaj dôvod override.');return;}
-                  window._overrideResult={ok:true,reason:r};modal.close();">
-                  ⚠ Schváliť napriek nízkej marži
-                </button>
-                <button class="btn-ghost" onclick="window._overrideResult={ok:false};modal.close();">Zrušiť</button>
-              </div>`);
-            const check = setInterval(() => {
-              if (window._overrideResult !== undefined) {
-                clearInterval(check);
-                const v = window._overrideResult;
-                delete window._overrideResult;
-                resolve(v);
-              }
-            }, 100);
-            setTimeout(() => { clearInterval(check); resolve({ ok: false }); }, 30000);
+              <div style="display:flex;gap:8px;">
+                <button id="override-yes" class="btn-primary" style="font-size:12px;padding:6px 14px;background:var(--red);">⚠ Schváliť</button>
+                <button id="override-no" class="btn-ghost" style="font-size:12px;padding:6px 14px;">Zrušiť</button>
+              </div>`;
+            const formActions = document.querySelector('#modal-body .form-actions');
+            if (formActions) formActions.before(bar);
+            else document.getElementById('modal-body')?.appendChild(bar);
+            document.getElementById('override-yes').onclick = () => {
+              const r = document.getElementById('override-reason-input')?.value?.trim();
+              if (!r) { toast.error('Zadaj dôvod override.'); return; }
+              bar.remove(); resolve({ ok: true, reason: r });
+            };
+            document.getElementById('override-no').onclick = () => { bar.remove(); resolve({ ok: false }); };
+            setTimeout(() => { bar.remove(); resolve({ ok: false }); }, 30000);
           })
         : { ok: false };
 
