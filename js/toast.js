@@ -17,6 +17,8 @@ const toast = {
   },
 
   show(msg, type = 'info', duration = 4000) {
+    const durations = { error: 7000, warning: 5000, success: 3000, info: 4000 };
+    duration = durations[type] || duration;
     const colors = {
       success: { bg:'rgba(16,185,129,0.15)', border:'rgba(16,185,129,0.4)', color:'#10b981', icon:'✓' },
       error:   { bg:'rgba(242,85,85,0.15)',  border:'rgba(242,85,85,0.4)',  color:'#f25555', icon:'✕' },
