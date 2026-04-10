@@ -153,6 +153,7 @@ const pipelineView = {
 
         ${slaWarn ? `<div style="font-size:9px;color:var(--red);margin-bottom:3px;">⚠ SLA</div>` : ''}
         ${d.requires_approval && !d.reviewed_at ? `<div style="font-size:9px;color:var(--acc);margin-bottom:3px;">⏳ Čaká</div>` : ''}
+        ${d.margin_override ? `<div style="font-size:9px;color:var(--red);margin-bottom:3px;">⚠ Override</div>` : ''}
 
         <div style="font-weight:700;margin-bottom:4px;line-height:1.3;color:var(--txt);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(d.title||'—')}</div>
 
@@ -161,7 +162,18 @@ const pipelineView = {
 
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px;">
           <span class="mono" style="font-weight:700;color:${colColor};font-size:11px;">${EUR(price)}</span>
-          ${hasKey ? `<button class="icon-btn" style="font-size:10px;padding:1px 4px;" title="AI" onclick="event.stopPropagation();pipelineView._openAI('${d.id}')">✦</button>` : ''}
+          <div style="display:flex;align-items:center;gap:4px;">
+            ${(() => {
+              const cost  = d.cost_snapshot || 0;
+              const comm  = d.commission_amount_snapshot || 0;
+              const mPct  = price > 0 ? Math.round((price-cost-comm)/price*100) : null;
+              if (mPct === null) return '';
+              const mc = mPct >= 25 ? 'var(--green)' : mPct >= 15 ? 'var(--acc)' : 'var(--red)';
+              return `<span style="font-size:9px;color:${mc};font-weight:700;">${mPct}%</span>`;
+            })()}
+            ${d.discount_amount > 0 ? `<span style="font-size:9px;color:var(--purple);" title="Benefit zľava">🎁</span>` : ''}
+            ${hasKey ? `<button class="icon-btn" style="font-size:10px;padding:1px 4px;" title="AI" onclick="event.stopPropagation();pipelineView._openAI('${d.id}')">✦</button>` : ''}
+          </div>
         </div>
       </div>`;
   },
@@ -540,7 +552,7 @@ const pipelineView = {
 
   async _saveDetail(id) {
     const title     = document.getElementById('dd-title')?.value.trim();
-    if (!title) { alert('Zadaj názov.'); return; }
+    if (!title) { toast.error('Zadaj názov dealu.'); return; }
 
     const status    = document.getElementById('dd-status')?.value;
     const contactId = document.getElementById('dd-contact')?.value || null;
@@ -551,7 +563,7 @@ const pipelineView = {
     const payMethod = document.getElementById('dd-pay-method')?.value || null;
     const payRef    = document.getElementById('dd-pay-ref')?.value    || null;
 
-    // Enforcement checklistu
+    // Enforcement checklistu — toast namiesto alert
     const checks = {
       contacted:       () => contactId || 'Prirad kontakt pred KONTAKTOVANÝ.',
       offer_sent:      () => (productId && price > 0) || 'Prirad produkt a nastav cenu pred PONUKOU.',
@@ -561,7 +573,7 @@ const pipelineView = {
     };
     if (checks[status]) {
       const result = checks[status]();
-      if (result !== true) { alert('⚠️ ' + result); return; }
+      if (result !== true) { toast.error(result); return; }
     }
     if (status === 'lost' || status === 'cancelled') {
       const deal = this._deals.find(x => x.id === id);
@@ -573,11 +585,36 @@ const pipelineView = {
       }
     }
 
-    // Prepočítaj komisie
+    // Snapshot invalidation — ak sa zmení produkt alebo klient, resetni zľavu
     const deal    = this._deals.find(x => x.id === id);
+    const productChanged = deal && productId && deal.product_id !== productId;
+    const contactChanged = deal && contactId && deal.contact_id !== contactId;
+    if ((productChanged || contactChanged) && deal?.discount_amount > 0) {
+      toast.warning('Produkt alebo klient sa zmenil — benefit zľava bola resetnutá. Vytvor nový deal pre aplikáciu zľavy.');
+      // Reset zľavy
+      Object.assign(deal, {
+        discount_percent: 0, discount_amount: 0,
+        discount_source: null, discount_applied_by: null, discount_applied_at: null,
+      });
+    }
+
+    // Prepočítaj komisie
     const product = (app.state.products||[]).find(p => p.id === (productId||deal?.product_id));
     const pct     = deal?.commission_percent_snapshot || product?.commission_percent || 0;
     const comm    = round2(price * pct / 100);
+    const marginPct = price > 0 ? Math.round((price - cost - comm) / price * 100) : 0;
+
+    // Guardrail aj pri úprave
+    if (price > 0 && marginPct < 15 && status !== deal?.status) {
+      const role = previewRole.effective() || 'obchodnik';
+      if (role !== 'admin') {
+        toast.error(`Zmena stavu zablokovaná — marža ${marginPct}% je pod minimom 15%. Kontaktuj admina.`);
+        return;
+      }
+      toast.warning(`Admin override: marža ${marginPct}% je pod minimom 15%.`);
+    } else if (price > 0 && marginPct < 25) {
+      toast.warning(`Upozornenie: marža ${marginPct}% je pod odporúčanou hranicou 25%.`);
+    }
 
     const update = {
       title, status,
@@ -591,6 +628,14 @@ const pipelineView = {
       net_profit_snapshot:         price - cost - comm,
       payment_method:              payMethod,
       payment_reference:           payRef,
+      // Reset zľavy ak sa zmenil produkt/klient
+      ...(productChanged || contactChanged ? {
+        discount_percent:    0,
+        discount_amount:     0,
+        discount_source:     null,
+        discount_applied_by: null,
+        discount_applied_at: null,
+      } : {}),
     };
 
     const { data, error } = await db.client.from('deals').update(update).eq('id', id).select().single();
@@ -786,10 +831,84 @@ const pipelineView = {
     }
 
     const effectivePrice = discountApply ? finalPrice : price;
+    const costVal        = p?.cost_price || 0;
+    const commAmount     = round2(effectivePrice * pct / 100);
+    const netProfit      = round2(effectivePrice - costVal - commAmount);
+    const marginPct      = effectivePrice > 0 ? Math.round(netProfit / effectivePrice * 100) : 0;
+
+    // ── Benefit usage enforcement — max_uses_per_month ──────────────────────
+    if (discountApply && contactId) {
+      try {
+        const monthStart = new Date();
+        monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+        const { data: usages } = await db.client
+          .from('benefit_usage')
+          .select('id')
+          .eq('user_id', app._currentUserId())
+          .gte('created_at', monthStart.toISOString());
+        const usedThisMonth = (usages||[]).length;
+        // Defaultný limit 3× mesačne ak nie je nastavený inak
+        const monthLimit = 3;
+        if (usedThisMonth >= monthLimit) {
+          toast.warning(`Limit benefitov na tento mesiac dosiahnutý (${usedThisMonth}/${monthLimit}). Zľava nebude aplikovaná.`);
+          discountApply = false;
+        }
+      } catch(e) { console.warn('Benefit usage check failed:', e.message); }
+    }
+
+    // ── Profit guardrail ────────────────────────────────────────────────────
+    const WARN_THRESHOLD  = 25;
+    const BLOCK_THRESHOLD = 15;
+    let marginOverride = false;
+
+    if (effectivePrice > 0 && marginPct < BLOCK_THRESHOLD) {
+      // Tvrdý blok — vyžaduje admin override
+      const role = (previewRole.effective() || 'obchodnik');
+      const isAdmin = role === 'admin';
+      const overrideGranted = isAdmin
+        ? await new Promise(resolve => {
+            modal.open('🚨 Nízka marža — Admin override', `
+              <div style="background:rgba(242,85,85,0.1);border:1px solid rgba(242,85,85,0.4);border-radius:8px;padding:12px;margin-bottom:14px;">
+                <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:6px;">Marža ${marginPct}% je pod minimom ${BLOCK_THRESHOLD}%</div>
+                <div style="font-size:12px;color:var(--muted);">Cena: ${EUR ? EUR(effectivePrice) : effectivePrice} € · Náklad: ${EUR ? EUR(costVal) : costVal} € · Komisie: ${EUR ? EUR(commAmount) : commAmount} €</div>
+              </div>
+              <div class="form-row"><label class="form-label">Dôvod override (povinný)</label>
+                <textarea id="override-reason" style="min-height:60px;" placeholder="Prečo schvaľuješ tento deal napriek nízkej marži?"></textarea></div>
+              <div class="form-actions">
+                <button class="btn-primary" style="background:var(--red);" onclick="
+                  const r=document.getElementById('override-reason')?.value?.trim();
+                  if(!r){toast.error('Zadaj dôvod override.');return;}
+                  window._overrideResult={ok:true,reason:r};modal.close();">
+                  ⚠ Schváliť napriek nízkej marži
+                </button>
+                <button class="btn-ghost" onclick="window._overrideResult={ok:false};modal.close();">Zrušiť</button>
+              </div>`);
+            const check = setInterval(() => {
+              if (window._overrideResult !== undefined) {
+                clearInterval(check);
+                const v = window._overrideResult;
+                delete window._overrideResult;
+                resolve(v);
+              }
+            }, 100);
+            setTimeout(() => { clearInterval(check); resolve({ ok: false }); }, 30000);
+          })
+        : { ok: false };
+
+      if (!overrideGranted?.ok) {
+        if (!isAdmin) toast.error(`Deal zablokovaný — marža ${marginPct}% je pod minimom ${BLOCK_THRESHOLD}%. Kontaktuj admina.`);
+        if (btn) { btn.disabled = false; btn.textContent = 'Vytvoriť deal'; }
+        return;
+      }
+      marginOverride = overrideGranted;
+
+    } else if (effectivePrice > 0 && marginPct < WARN_THRESHOLD) {
+      // Mäkké varovanie — môže pokračovať
+      toast.warning(`Upozornenie: marža ${marginPct}% je pod odporúčanou hranicou ${WARN_THRESHOLD}%.`);
+    }
 
     try {
       const basePrice = p?.base_price || 0;
-      const commAmount = round2(effectivePrice * pct / 100);
       const { data, error } = await db.client.from('deals').insert({
         title,
         contact_id:                  contactId,
@@ -808,12 +927,17 @@ const pipelineView = {
         discount_source:             discountApply ? discountSource : null,
         discount_applied_by:         discountApply ? uid            : null,
         discount_applied_at:         discountApply ? new Date().toISOString() : null,
+        // Guardrail override
+        margin_override:             marginOverride ? true : false,
+        margin_override_by:          marginOverride ? uid  : null,
+        margin_override_at:          marginOverride ? new Date().toISOString() : null,
+        margin_override_reason:      marginOverride?.reason || null,
         // Snapshoty
         sale_price_snapshot:         effectivePrice,
-        cost_snapshot:               p?.cost_price || 0,
+        cost_snapshot:               costVal,
         commission_percent_snapshot: pct,
         commission_amount_snapshot:  commAmount,
-        net_profit_snapshot:         round2(effectivePrice - (p?.cost_price||0) - commAmount),
+        net_profit_snapshot:         netProfit,
         product_name_snapshot:       p?.name || null,
       }).select('*, contacts(name,email), products(name,category,base_price,commission_percent,commission_enabled,benefit_eligible,max_discount_pct)')
       .single();
