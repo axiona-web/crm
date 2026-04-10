@@ -334,6 +334,49 @@ const productsView = {
       </div>
 
       <div id="pf-error" style="display:none;color:var(--red);font-size:12px;padding:8px;background:rgba(242,85,85,0.1);border-radius:6px;margin-top:12px;"></div>
+      <!-- Marketplace sekcia -->
+      <div style="font-size:11px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:0.06em;margin:16px 0 10px;border-top:1px solid var(--brd);padding-top:14px;">🛍 Marketplace nastavenia</div>
+      <div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+          <input type="checkbox" id="pf-mp-visible" ${p.is_marketplace_visible?'checked':''} />
+          Zobraziť v marketplace
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+          <input type="checkbox" id="pf-mp-featured" ${p.marketplace_is_featured?'checked':''} />
+          ⭐ Odporúčané
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+          <input type="checkbox" id="pf-mp-price" ${p.marketplace_show_price!==false?'checked':''} />
+          Zobraziť cenu
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+          <input type="checkbox" id="pf-mp-approval" ${p.marketplace_requires_manual_approval!==false?'checked':''} />
+          Vyžaduje schválenie
+        </label>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row"><label class="form-label">Marketplace názov</label>
+          <input id="pf-mp-title" value="${esc(p.marketplace_title||p.name||'')}" placeholder="Verejný názov produktu" /></div>
+        <div class="form-row"><label class="form-label">Badge</label>
+          <input id="pf-mp-badge" value="${esc(p.marketplace_badge||'')}" placeholder="Novinka, Odporúčané..." /></div>
+      </div>
+      <div class="form-row"><label class="form-label">Krátky popis (v karte)</label>
+        <input id="pf-mp-short" value="${esc(p.marketplace_short_description||'')}" placeholder="1-2 vety o produkte" /></div>
+      <div class="form-row"><label class="form-label">Dlhý popis (v detaile)</label>
+        <textarea id="pf-mp-long" style="min-height:80px;resize:vertical;">${esc(p.marketplace_long_description||'')}</textarea></div>
+      <div class="form-grid-2">
+        <div class="form-row"><label class="form-label">URL obrázku</label>
+          <input id="pf-mp-img" value="${esc(p.marketplace_image_url||'')}" placeholder="https://..." /></div>
+        <div class="form-row"><label class="form-label">CTA tlačidlo</label>
+          <input id="pf-mp-cta" value="${esc(p.marketplace_cta_label||'Mám záujem')}" placeholder="Mám záujem" /></div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row"><label class="form-label">Price label (ak bez ceny)</label>
+          <input id="pf-mp-price-label" value="${esc(p.marketplace_price_label||'')}" placeholder="od 490 €" /></div>
+        <div class="form-row"><label class="form-label">Poradie</label>
+          <input id="pf-mp-order" type="number" value="${p.marketplace_sort_order||0}" /></div>
+      </div>
+
       <div class="form-actions" style="margin-top:14px;">
         <button class="btn-primary" id="pf-submit" onclick="productsView.save('${p.id||''}',${isNew})">Uložiť</button>
         <button class="btn-ghost" onclick="modal.close()">Zrušiť</button>
@@ -421,6 +464,19 @@ const productsView = {
       referrer_points_enabled:   this._chk('pf-ref-points'),
       commission_enabled:        this._chk('pf-commission'),
       currency:                  'EUR',
+      // Marketplace
+      is_marketplace_visible:    this._chk('pf-mp-visible'),
+      marketplace_title:         this._val('pf-mp-title')  || null,
+      marketplace_short_description: this._val('pf-mp-short') || null,
+      marketplace_long_description:  this._val('pf-mp-long')  || null,
+      marketplace_image_url:     this._val('pf-mp-img')    || null,
+      marketplace_badge:         this._val('pf-mp-badge')  || null,
+      marketplace_cta_label:     this._val('pf-mp-cta')    || 'Mám záujem',
+      marketplace_show_price:    this._chk('pf-mp-price'),
+      marketplace_price_label:   this._val('pf-mp-price-label') || null,
+      marketplace_is_featured:   this._chk('pf-mp-featured'),
+      marketplace_sort_order:    Number(this._val('pf-mp-order')) || 0,
+      marketplace_requires_manual_approval: this._chk('pf-mp-approval'),
     };
 
     try {
