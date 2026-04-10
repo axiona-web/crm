@@ -57,7 +57,7 @@ const pipelineView = {
     const isAdmin = role === 'admin';
 
     let q = db.client.from('deals')
-      .select('*, contacts(name,email,phone), products(name,category,base_price,commission_percent,commission_enabled)')
+      .select('id,title,status,contact_id,product_id,owner_id,assigned_to,created_by,source,notes,description,requires_approval,reviewed_at,sla_breached,sla_due_at,loss_reason,cancel_reason,payment_method,payment_reference,sale_price_snapshot,cost_snapshot,commission_percent_snapshot,commission_amount_snapshot,net_profit_snapshot,product_name_snapshot,base_price,discount_percent,discount_amount,final_price,discount_source,discount_applied_by,discount_applied_at,margin_override,margin_override_reason,paid_at,won_at,in_progress_at,completed_at,lost_at,cancelled_at,created_at,contacts(name,email,phone),products(name,category,base_price,commission_percent,commission_enabled,benefit_eligible,max_discount_pct)')
       .order('created_at', { ascending: false });
 
     if (!isAdmin) q = q.or(`owner_id.eq.${uid},assigned_to.eq.${uid},created_by.eq.${uid}`);
