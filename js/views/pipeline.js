@@ -596,9 +596,27 @@ const pipelineView = {
     const { data, error } = await db.client.from('deals').update(update).eq('id', id).select().single();
     if (error) { toast.error('Chyba: ' + error.message); return; }
 
+    // Audit log pri zmene ceny alebo produktu
+    const oldDeal = this._deals.find(x => x.id === id);
+    if (oldDeal) {
+      const changed = [];
+      if (oldDeal.sale_price_snapshot !== price)    changed.push({ field:'cena',    old: oldDeal.sale_price_snapshot, new: price });
+      if (oldDeal.product_id          !== productId) changed.push({ field:'produkt', old: oldDeal.product_id, new: productId });
+      if (changed.length > 0) {
+        db.client.from('audit_logs').insert({
+          user_id:     app._currentUserId(),
+          action:      'deal_edited',
+          entity_type: 'deal',
+          entity_id:   id,
+          new_value:   JSON.stringify({ changes: changed }),
+        }).catch(() => {});
+      }
+    }
+
     this._deals = this._deals.map(d => d.id === id ? {...d,...update} : d);
     modal.close();
     this._renderBoard();
+    toast.success('Deal uložený.');
   },
 
   async _deleteDeal(id) {
@@ -801,9 +819,34 @@ const pipelineView = {
       .single();
       if (error) throw error;
 
+      // Zaloguj použitie benefitu do benefit_usage
+      if (discountApply && data?.id) {
+        db.client.from('benefit_usage').insert({
+          user_id:    uid,
+          deal_id:    data.id,
+          note:       `${discountSource} — ${discountPct}% zľava — ${EUR ? EUR(discountAmount) : discountAmount + ' €'} ušetrené`,
+        }).catch(e => console.warn('benefit_usage insert failed:', e.message));
+
+        // Audit log
+        db.client.from('audit_logs').insert({
+          user_id:     uid,
+          action:      'discount_applied',
+          entity_type: 'deal',
+          entity_id:   data.id,
+          new_value:   JSON.stringify({
+            discount_source:  discountSource,
+            discount_pct:     discountPct,
+            discount_amount:  discountAmount,
+            base_price:       price,
+            final_price:      effectivePrice,
+          }),
+        }).catch(() => {});
+      }
+
       this._deals.unshift(data);
       modal.close();
       this._renderBoard();
+      if (discountApply) toast.success(`Zľava ${discountPct}% aplikovaná — ušetrené ${discountAmount.toFixed(2)} €`);
     } catch(e) {
       toast.error('Chyba: ' + e.message);
       if (btn) { btn.disabled = false; btn.textContent = 'Vytvoriť deal'; }

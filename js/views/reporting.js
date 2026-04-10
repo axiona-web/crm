@@ -24,10 +24,12 @@ const reportingView = {
 
   async _load() {
     const [dealsRes, commsRes, productsRes, membersRes] = await Promise.all([
-      db.client.from('deals').select('*, profiles(name)').order('created_at'),
+      db.client.from('deals')
+        .select('*, profiles!deals_owner_id_fkey(name), contacts(membership_levels(name,slug,color,icon))')
+        .order('created_at'),
       db.client.from('commissions').select('*, profiles(name,email)').order('created_at'),
       db.client.from('products').select('*').eq('is_active', true),
-      db.client.from('profiles').select('*').eq('role', 'clen'),
+      db.client.from('profiles').select('*, membership_levels(name,slug,color,icon)').eq('role', 'clen'),
     ]);
     this._data = {
       deals:    dealsRes.data    || [],
@@ -60,6 +62,57 @@ const reportingView = {
     const discountDeals      = paidDeals.filter(d => (d.discount_amount||0) > 0);
     const totalDiscounts     = discountDeals.reduce((a,d) => a+(d.discount_amount||0), 0);
     const profitAfterBenefits = totalNet - totalDiscounts;
+
+    // Benefit ekonomika po produktoch
+    const prodBenefit = {};
+    paidDeals.forEach(d => {
+      const name = d.product_name_snapshot || '—';
+      if (!prodBenefit[name]) prodBenefit[name] = { revenue:0, cost:0, comm:0, discount:0, count:0, discountCount:0 };
+      prodBenefit[name].revenue  += d.sale_price_snapshot || 0;
+      prodBenefit[name].cost     += d.cost_snapshot || 0;
+      prodBenefit[name].comm     += d.commission_amount_snapshot || 0;
+      prodBenefit[name].discount += d.discount_amount || 0;
+      prodBenefit[name].count++;
+      if (d.discount_amount > 0) prodBenefit[name].discountCount++;
+    });
+    Object.values(prodBenefit).forEach(p => {
+      p.grossMargin = p.revenue - p.cost;
+      p.netProfit   = p.revenue - p.cost - p.comm;
+      p.profitAfter = p.netProfit - p.discount;
+      p.marginPct   = p.revenue > 0 ? Math.round(p.profitAfter / p.revenue * 100) : 0;
+    });
+    const topProdBenefit = Object.entries(prodBenefit).sort((a,b) => b[1].revenue - a[1].revenue).slice(0,8);
+
+    // Benefit ekonomika po úrovniach
+    const LEVELS = ['bronze','silver','gold','platinum'];
+    const levelColors = { bronze:'#cd7f32', silver:'#a8a9ad', gold:'#d4af37', platinum:'#e5e4e2' };
+    const levelBenefit = {};
+    paidDeals.forEach(d => {
+      // Skús získať level z discount_source alebo z kontaktu
+      let slug = 'nezname';
+      if (d.discount_source) {
+        const match = d.discount_source.match(/\(([^)]+)\)/);
+        if (match) slug = match[1].toLowerCase();
+      }
+      if (!levelBenefit[slug]) levelBenefit[slug] = { name: d.discount_source?.split(' (')[0] || slug, revenue:0, cost:0, comm:0, discount:0, count:0 };
+      levelBenefit[slug].revenue  += d.sale_price_snapshot || 0;
+      levelBenefit[slug].cost     += d.cost_snapshot || 0;
+      levelBenefit[slug].comm     += d.commission_amount_snapshot || 0;
+      levelBenefit[slug].discount += d.discount_amount || 0;
+      levelBenefit[slug].count++;
+    });
+    Object.values(levelBenefit).forEach(l => {
+      l.profitAfter = l.revenue - l.cost - l.comm - l.discount;
+      l.marginPct   = l.revenue > 0 ? Math.round(l.profitAfter / l.revenue * 100) : 0;
+    });
+
+    // Benefit statistiky po úrovniach zo štruktúrovaných polí
+    const memberLevels = { bronze:0, silver:0, gold:0, platinum:0, none:0 };
+    members.forEach(m => {
+      const slug = m.membership_levels?.slug || 'none';
+      if (memberLevels[slug] !== undefined) memberLevels[slug]++;
+      else memberLevels['none']++;
+    });
 
     const convRate = closedDeals.length ? Math.round((closedDeals.length - lostDeals.length) / closedDeals.length * 100) : 0;
 
@@ -339,6 +392,99 @@ const reportingView = {
                     <span class="mono" style="font-size:13px;font-weight:700;color:var(--muted);min-width:20px;">${count}</span>
                   </div>
                 </div>`).join('')}
+        </div>
+      </div>
+
+      <!-- Benefit ekonomika po produktoch -->
+      <div class="card" style="margin-bottom:14px;">
+        <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px;">
+          🎁 Benefit ekonomika — po produktoch
+        </div>
+        ${topProdBenefit.length === 0
+          ? '<div style="color:var(--muted);font-size:13px;">Žiadne dáta</div>'
+          : `<table style="width:100%;border-collapse:collapse;">
+              <thead>
+                <tr style="border-bottom:2px solid var(--brd);">
+                  <th style="text-align:left;padding:6px 8px;font-size:11px;color:var(--muted);font-weight:600;">Produkt</th>
+                  <th style="text-align:right;padding:6px 8px;font-size:11px;color:var(--muted);font-weight:600;">Ks</th>
+                  <th style="text-align:right;padding:6px 8px;font-size:11px;color:var(--muted);font-weight:600;">Tržby</th>
+                  <th style="text-align:right;padding:6px 8px;font-size:11px;color:var(--muted);font-weight:600;">Čistý zisk</th>
+                  <th style="text-align:right;padding:6px 8px;font-size:11px;color:var(--purple);font-weight:600;">Zľavy</th>
+                  <th style="text-align:right;padding:6px 8px;font-size:11px;color:var(--blue);font-weight:600;">Po zľavách</th>
+                  <th style="text-align:right;padding:6px 8px;font-size:11px;color:var(--muted);font-weight:600;">Marža</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${topProdBenefit.map(([name, s]) => {
+                  const marginColor = s.marginPct >= 30 ? 'var(--green)' : s.marginPct >= 15 ? 'var(--acc)' : 'var(--red)';
+                  return `
+                    <tr style="border-bottom:1px solid var(--brd);">
+                      <td style="padding:7px 8px;font-size:13px;font-weight:600;">${esc(name)}</td>
+                      <td style="padding:7px 8px;text-align:right;font-size:12px;" class="mono">${s.count}×</td>
+                      <td style="padding:7px 8px;text-align:right;font-weight:700;color:var(--acc);" class="mono">${fmt(s.revenue)}</td>
+                      <td style="padding:7px 8px;text-align:right;color:var(--green);" class="mono">${fmt(s.netProfit)}</td>
+                      <td style="padding:7px 8px;text-align:right;color:var(--purple);" class="mono">${s.discount > 0 ? '-' + fmt(s.discount) : '—'}</td>
+                      <td style="padding:7px 8px;text-align:right;font-weight:700;color:var(--blue);" class="mono">${fmt(s.profitAfter)}</td>
+                      <td style="padding:7px 8px;text-align:right;">
+                        <span style="font-weight:700;color:${marginColor};">${s.marginPct}%</span>
+                      </td>
+                    </tr>`;
+                }).join('')}
+              </tbody>
+            </table>`}
+      </div>
+
+      <!-- Benefit ekonomika po úrovniach -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+
+        <!-- Distribúcia členov -->
+        <div class="card">
+          <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px;">
+            Distribúcia členov po úrovniach
+          </div>
+          ${Object.entries(memberLevels).filter(([,v])=>v>0).map(([slug, count]) => {
+            const colors = { bronze:'#cd7f32', silver:'#a8a9ad', gold:'#d4af37', platinum:'#e5e4e2', none:'var(--muted)' };
+            const labels = { bronze:'🥉 Bronze', silver:'🥈 Silver', gold:'🥇 Gold', platinum:'💎 Platinum', none:'Bez úrovne' };
+            const pct    = members.length > 0 ? Math.round(count/members.length*100) : 0;
+            const color  = colors[slug] || 'var(--muted)';
+            return `
+              <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--brd);">
+                <div style="width:70px;font-size:12px;font-weight:600;color:${color};">${labels[slug]||slug}</div>
+                <div style="flex:1;background:var(--inp);border-radius:4px;height:6px;overflow:hidden;">
+                  <div style="background:${color};height:100%;width:${pct}%;border-radius:4px;"></div>
+                </div>
+                <div style="text-align:right;min-width:50px;">
+                  <span class="mono" style="font-weight:700;">${count}</span>
+                  <span style="font-size:11px;color:var(--muted);"> (${pct}%)</span>
+                </div>
+              </div>`;
+          }).join('')}
+        </div>
+
+        <!-- Profit po úrovniach -->
+        <div class="card">
+          <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px;">
+            Profit po zľavách — po úrovniach klientov
+          </div>
+          ${Object.keys(levelBenefit).length === 0
+            ? '<div style="color:var(--muted);font-size:13px;">Žiadne dealy so zľavou</div>'
+            : Object.entries(levelBenefit).filter(([k])=>k!=='nezname').sort((a,b)=>b[1].revenue-a[1].revenue).map(([slug, l]) => {
+                const colors = { bronze:'#cd7f32', silver:'#a8a9ad', gold:'#d4af37', platinum:'#e5e4e2' };
+                const color  = colors[slug] || 'var(--muted)';
+                const marginColor = l.marginPct >= 30 ? 'var(--green)' : l.marginPct >= 15 ? 'var(--acc)' : 'var(--red)';
+                return `
+                  <div style="padding:8px 0;border-bottom:1px solid var(--brd);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                      <span style="font-size:13px;font-weight:700;color:${color};">${esc(l.name||slug)}</span>
+                      <span style="font-size:11px;color:var(--muted);">${l.count} dealov</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;font-size:12px;">
+                      <span style="color:var(--muted);">Tržby: <strong style="color:var(--acc);">${fmt(l.revenue)}</strong></span>
+                      <span style="color:var(--purple);">Zľavy: -${fmt(l.discount)}</span>
+                      <span style="color:${marginColor};font-weight:700;">${l.marginPct}%</span>
+                    </div>
+                  </div>`;
+              }).join('')}
         </div>
       </div>
 
