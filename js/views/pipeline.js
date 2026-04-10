@@ -604,14 +604,14 @@ const pipelineView = {
     const marginPct = price > 0 ? Math.round((price - cost - comm) / price * 100) : 0;
 
     // Guardrail aj pri úprave
-    if (price > 0 && marginPct < 15 && status !== deal?.status) {
+    if (price > 0 && marginPct <= 15 && status !== deal?.status) {
       const role = previewRole.effective() || 'obchodnik';
       if (role !== 'admin') {
         toast.error(`Zmena stavu zablokovaná — marža ${marginPct}% je pod minimom 15%. Kontaktuj admina.`);
         return;
       }
       toast.warning(`Admin override: marža ${marginPct}% je pod minimom 15%.`);
-    } else if (price > 0 && marginPct < 25) {
+    } else if (price > 0 && marginPct <= 25) {
       toast.warning(`Upozornenie: marža ${marginPct}% je pod odporúčanou hranicou 25%.`);
     }
 
@@ -860,7 +860,7 @@ const pipelineView = {
     const BLOCK_THRESHOLD = 15;
     let marginOverride = false;
 
-    if (effectivePrice > 0 && marginPct < BLOCK_THRESHOLD) {
+    if (effectivePrice > 0 && marginPct <= BLOCK_THRESHOLD) {
       // Tvrdý blok — vyžaduje admin override
       const role = (previewRole.effective() || 'obchodnik');
       const isAdmin = role === 'admin';
@@ -901,7 +901,7 @@ const pipelineView = {
       }
       marginOverride = overrideGranted;
 
-    } else if (effectivePrice > 0 && marginPct < WARN_THRESHOLD) {
+    } else if (effectivePrice > 0 && marginPct <= WARN_THRESHOLD) {
       // Mäkké varovanie — môže pokračovať
       toast.warning(`Upozornenie: marža ${marginPct}% je pod odporúčanou hranicou ${WARN_THRESHOLD}%.`);
     }
