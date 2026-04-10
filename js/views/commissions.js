@@ -71,10 +71,10 @@ const commissionsView = {
                       ${c.rate ? `<span style="font-size:11px;color:var(--muted);">${c.rate}%</span>` : ''}
                     </div>
                     <div style="display:flex;gap:12px;font-size:12px;color:var(--muted);flex-wrap:wrap;">
-                      ${c.contactId ? `<span>👤 ${esc(cName(c.contactId))}</span>` : ''}
+                      ${c.contact_id ? `<span>👤 ${esc(cName(c.contact_id))}</span>` : ''}
                       ${c.order_id  ? `<span>📦 ${esc(oName(c.order_id))}</span>`  : ''}
-                      ${c.dealId    ? `<span>🎯 ${esc(oName(c.dealId))}</span>`    : ''}
-                      <span>📅 ${FMT(c.date||c.createdAt)}</span>
+                      ${c.deal_id    ? `<span>🎯 ${esc(oName(c.deal_id))}</span>`    : ''}
+                      <span>📅 ${FMT(c.date||c.created_at)}</span>
                     </div>
                     ${c.notes ? `<div style="font-size:12px;color:var(--muted);margin-top:4px;">${esc(c.notes)}</div>` : ''}
                   </div>
@@ -125,10 +125,10 @@ const commissionsView = {
 
   _form(c, isNew) {
     const cOpts = app.state.contacts.map(x =>
-      `<option value="${x.id}"${c.contactId===x.id?' selected':''}>${esc(x.name)}</option>`
+      `<option value="${x.id}"${c.contact_id===x.id?' selected':''}>${esc(x.name)}</option>`
     ).join('');
     const oOpts = (app.state.opportunities||[]).map(x =>
-      `<option value="${x.id}"${(c.dealId||c.order_id)===x.id?' selected':''}>${esc(x.title)} — ${EUR(x.value||0)}</option>`
+      `<option value="${x.id}"${(c.deal_id||c.order_id)===x.id?' selected':''}>${esc(x.title)} — ${EUR(x.value||0)}</option>`
     ).join('');
 
     return `

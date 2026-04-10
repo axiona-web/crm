@@ -12,8 +12,8 @@ const obchodnikDashboardView = {
     const paidDeals    = deals.filter(d => ['paid','in_progress','completed'].includes(d.status));
     const lostDeals    = deals.filter(d => d.status === 'lost');
     const pipeVal      = activeDeals.reduce((a,d) => a+(d.sale_price_snapshot||0), 0);
-    const myComms      = commissions.filter(c => c.ownerId === uid || c.owner_id === uid);
-    const myMembers    = contacts.filter(c => c.ownerId === uid);
+    const myComms      = commissions.filter(c => c.owner_id === uid || c.owner_id === uid);
+    const myMembers    = contacts.filter(c => c.owner_id === uid);
     const pendingComm  = myComms.filter(c => c.status==='pending').reduce((a,c)  => a+(c.amount||0), 0);
     const approvedComm = myComms.filter(c => c.status==='approved').reduce((a,c) => a+(c.amount||0), 0);
     const paidComm     = myComms.filter(c => c.status==='paid').reduce((a,c)     => a+(c.amount||0), 0);
@@ -124,7 +124,7 @@ const obchodnikDashboardView = {
                 <span class="mono" style="font-size:14px;font-weight:700;">${EUR(c.amount)}</span>
                 ${c.rate ? `<span style="font-size:11px;color:var(--muted);">${c.rate}%</span>` : ''}
               </div>
-              <span style="font-size:12px;color:var(--muted);">${FMT(c.date||c.createdAt||c.created_at)}</span>
+              <span style="font-size:12px;color:var(--muted);">${FMT(c.date||c.created_at||c.created_at)}</span>
             </div>`).join('')}
         </div>` : ''}`;
   },
