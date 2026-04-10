@@ -326,7 +326,7 @@ const pipelineView = {
   async _submitReason(id, type) {
     const reason = document.getElementById('reason-select')?.value;
     const note   = document.getElementById('reason-note')?.value?.trim();
-    if (!reason) { alert('Vyber dôvod.'); return; }
+    if (!reason) { toast.error('Vyber dôvod zo zoznamu — je povinný.'); return; }
     const full   = note ? `${reason} — ${note}` : reason;
     modal.close();
     const extra  = type === 'lost' ? { loss_reason: full } : { cancel_reason: full };
@@ -348,8 +348,8 @@ const pipelineView = {
     if (error) {
       // Zobraz DB validačnú chybu čitateľne
       const msg = error.message || '';
-      const friendly = msg.includes('musí mať') ? msg.split('ERROR:').pop().trim() : 'Chyba: ' + msg;
-      alert('⚠️ ' + friendly);
+      const friendly = msg.includes('musí mať') ? msg.split('ERROR:').pop().trim() : msg.split('ERROR:').pop().trim() || msg;
+      toast.error(friendly);
       return;
     }
 
@@ -917,7 +917,7 @@ const pipelineView = {
         source:                      document.getElementById('nd-source')?.value || 'manual',
         description:                 document.getElementById('nd-desc')?.value   || null,
         status:                      'new',
-        requires_approval:           true,
+        requires_approval:           false,
         // Ceny
         base_price:                  price,
         discount_percent:            discountApply ? discountPct    : 0,
