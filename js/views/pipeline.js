@@ -627,6 +627,15 @@ const pipelineView = {
       toast.warning(`${reason} sa zmenil — benefit zľava bola resetnutá. Pre novú zľavu vytvor nový deal.`);
     }
 
+    // Varovanie ak sa mení cena po existujúcej faktúre
+    if (priceChanged) {
+      const { data: existingInv } = await db.client.from('invoices')
+        .select('invoice_number').eq('deal_id', id).not('status','in','("cancelled","draft")').limit(1);
+      if (existingInv?.length > 0) {
+        toast.warning(`⚠ Cena dealu zmenená — faktúra ${existingInv[0].invoice_number} ostáva na pôvodnej sume. Zmena bola zalogovaná.`);
+      }
+    }
+
     // Prepočítaj komisie
     const product = (app.state.products||[]).find(p => p.id === (productId||deal?.product_id));
     const pct     = deal?.commission_percent_snapshot || product?.commission_percent || 0;
