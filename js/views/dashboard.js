@@ -135,7 +135,10 @@ const dashboardView = {
                 <div style="height:100%;border-radius:3px;background:linear-gradient(90deg,var(--acc),#f0b85a);width:${Math.round(m.value/maxMember*100)}%;"></div>
               </div>
             </div>`).join('')}
-      </div>`;
+      </div>
+
+      <!-- Pilotný monitoring -->
+      <div id="monitoring-wrap" style="margin-top:14px;"></div>`;
   },
 
   async afterRender() {
@@ -146,6 +149,69 @@ const dashboardView = {
     this._initFunnel();
     this._initDonut();
     this._initMonthly();
+    await this._loadMonitoring();
+  },
+
+  async _loadMonitoring() {
+    const el = document.getElementById('monitoring-wrap');
+    if (!el) return;
+
+    const today = new Date().toISOString().slice(0,10);
+    const [invRes, dealRes, commRes, auditRes] = await Promise.all([
+      db.client.from('invoices').select('id,invoice_number,status,due_date,amount_inc_vat,deal_id').not('status','in','("cancelled","draft")'),
+      db.client.from('deals').select('id,title,status'),
+      db.client.from('commissions').select('id,amount,status,owner_id'),
+      db.client.from('audit_logs').select('action,created_at,entity_id').order('created_at',{ascending:false}).limit(10),
+    ]);
+
+    const invoices = invRes.data || [];
+    const deals    = dealRes.data || [];
+    const comms    = commRes.data || [];
+    const audits   = auditRes.data || [];
+
+    // Nekonzistentné stavy
+    const overdueInvs    = invoices.filter(i => i.status === 'sent' && i.due_date < today);
+    const pendingInvs    = invoices.filter(i => i.status === 'sent');
+    const pendingComms   = comms.filter(c => c.status === 'pending');
+    const paidDeals      = deals.filter(d => d.status === 'payment_pending');
+    const priceChanges   = audits.filter(a => a.action === 'price_changed_after_invoice');
+
+    const issues = [];
+    if (overdueInvs.length > 0)  issues.push({ icon:'🔴', label:`${overdueInvs.length} faktúr po splatnosti`, action: `app.setView('payouts')`, color:'var(--red)' });
+    if (pendingInvs.length > 0)  issues.push({ icon:'🟡', label:`${pendingInvs.length} faktúr čaká na úhradu`, action: `app.setView('payouts')`, color:'var(--acc)' });
+    if (pendingComms.length > 0) issues.push({ icon:'🟡', label:`${pendingComms.length} komisií čaká na schválenie`, action: `app.setView('commissions')`, color:'var(--acc)' });
+    if (paidDeals.length > 0)    issues.push({ icon:'🟡', label:`${paidDeals.length} dealov čaká na platbu`, action: `app.setView('pipeline')`, color:'#f59e0b' });
+    if (priceChanges.length > 0) issues.push({ icon:'⚠️', label:`${priceChanges.length} zmien ceny po faktúre`, action: `app.setView('pipeline')`, color:'var(--red)' });
+
+    if (issues.length === 0) {
+      el.innerHTML = `
+        <div class="card" style="border-color:rgba(62,207,142,0.3);">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:18px;">✅</span>
+            <div>
+              <div style="font-size:13px;font-weight:700;color:var(--green);">Systém bez problémov</div>
+              <div style="font-size:11px;color:var(--muted);">Žiadne nekonzistentné stavy, faktúry, komisie</div>
+            </div>
+          </div>
+        </div>`;
+      return;
+    }
+
+    el.innerHTML = `
+      <div class="card" style="border-color:rgba(212,148,58,0.3);">
+        <div style="font-size:12px;font-weight:700;color:var(--acc);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px;">⚠ Monitoring — vyžaduje pozornosť</div>
+        ${issues.map(i => `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--brd);">
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px;">
+              <span>${i.icon}</span>
+              <span style="color:${i.color};">${i.label}</span>
+            </div>
+            <button class="btn-ghost" style="font-size:11px;" onclick="${i.action}">Zobraziť →</button>
+          </div>`).join('')}
+        <div style="font-size:11px;color:var(--muted);margin-top:8px;">
+          Posledná aktivita: ${audits[0] ? audits[0].action + ' (' + new Date(audits[0].created_at).toLocaleString('sk-SK') + ')' : 'žiadna'}
+        </div>
+      </div>`;
   },
 
   _initFunnel() {
