@@ -62,7 +62,14 @@ const app = {
     document.getElementById('root').innerHTML = auth.renderLoginScreen();
   },
 
+  _lastLoad: 0,
+
   async _loadData() {
+    // Throttle — nenačítavaj znovu ak to bolo pred menej ako 3 sekundy
+    const now = Date.now();
+    if (now - this._lastLoad < 3000) return;
+    this._lastLoad = now;
+
     try {
       const [contacts, orders, commissions, products, deals] = await Promise.all([
         db.client.from('contacts').select('*').order('created_at', { ascending: false }).then(r => r.data || []),
@@ -79,17 +86,20 @@ const app = {
       this.state.commissions = commissions;
       this.state.products    = products;
       this.state.deals       = deals;
-      // Kompatibilita so starým kódom
       this.state.leads         = deals;
       this.state.opportunities = deals.filter(d => ['offer_sent','won','payment_pending','paid','in_progress','completed'].includes(d.status));
     } catch(e) { console.error('Load error:', e); }
   },
 
+  _rendering: false,
+
   setView(id) {
     this.state.view = id;
     this.renderNav();
-    // Refreshni dáta pri každom prepnutí záložky
-    this._loadData().then(() => this.renderContent());
+    this._loadData().then(() => this.renderContent()).catch(e => {
+      console.error('setView error:', e);
+      this.renderContent(); // Pokús sa renderovať aj bez čerstvých dát
+    });
   },
 
   renderNav() {
@@ -104,10 +114,28 @@ const app = {
   },
 
   async renderContent() {
+    // Zabráň paralelným renderom
+    if (this._rendering) return;
+    this._rendering = true;
+
     const view = VIEWS[this.state.view];
-    if (!view) return;
-    document.getElementById('content').innerHTML = view.render();
-    if (view.afterRender) await view.afterRender();
+    if (!view) { this._rendering = false; return; }
+
+    try {
+      document.getElementById('content').innerHTML = view.render();
+      if (view.afterRender) await view.afterRender();
+    } catch(e) {
+      console.error('renderContent error:', e);
+      // Zobraz chybu v content area namiesto zamrznutia
+      const el = document.getElementById('content');
+      if (el) el.innerHTML += `
+        <div style="background:rgba(242,85,85,0.1);border:1px solid rgba(242,85,85,0.3);border-radius:8px;padding:12px;margin-top:12px;font-size:12px;color:var(--red);">
+          ⚠ Chyba pri načítaní sekcie: ${e.message}
+          <button class="btn-ghost" style="margin-left:12px;font-size:11px;" onclick="app.setView('${this.state.view}')">↻ Skúsiť znovu</button>
+        </div>`;
+    } finally {
+      this._rendering = false;
+    }
   },
 
   updateFooter() {
