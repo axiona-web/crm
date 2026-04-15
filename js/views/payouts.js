@@ -154,7 +154,11 @@ const payoutsView = {
                   </div>
                   <div style="text-align:right;flex-shrink:0;">
                     <div class="mono" style="font-size:16px;font-weight:700;color:var(--acc);">${this._fmt(i.amount_inc_vat)}</div>
-                    <div style="font-size:11px;color:var(--muted);">bez DPH: ${this._fmt(i.amount_ex_vat)}</div>
+                    ${i.reverse_charge
+                      ? `<div style="font-size:11px;color:var(--blue);font-weight:600;">Reverse charge</div>`
+                      : i.vat_rate > 0
+                        ? `<div style="font-size:11px;color:var(--muted);">bez DPH: ${this._fmt(i.amount_ex_vat)} + ${i.vat_rate}% DPH</div>`
+                        : `<div style="font-size:11px;color:var(--muted);">bez DPH: ${this._fmt(i.amount_ex_vat)}</div>`}
                   </div>
                 </div>
               </div>`;
@@ -216,6 +220,11 @@ const payoutsView = {
             <option value="0">0% (bez DPH)</option>
           </select></div>
       </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:10px;">
+        <input type="checkbox" id="if-reverse-charge" onchange="payoutsView._calcVat()" />
+        Reverse charge (platca DPH — faktúra bez DPH)
+        <span style="font-size:11px;color:var(--muted);">(vat_rate = 0, poznámka na faktúre)</span>
+      </label>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
         <div style="background:var(--inp);border:1px solid var(--brd);border-radius:8px;padding:8px;text-align:center;">
           <div style="font-size:10px;color:var(--muted);">DPH</div>
@@ -278,27 +287,32 @@ const payoutsView = {
   },
 
   _calcVat() {
-    const amount = parseFloat(document.getElementById('if-amount')?.value) || 0;
-    const rate   = parseFloat(document.getElementById('if-vat')?.value)   || 0;
-    const vat    = Math.round(amount * rate) / 100;
-    const total  = amount + vat;
-    const fmt    = v => v.toLocaleString('sk-SK',{minimumFractionDigits:2}) + ' €';
+    const amount  = parseFloat(document.getElementById('if-amount')?.value) || 0;
+    const isRC    = document.getElementById('if-reverse-charge')?.checked || false;
+    const rate    = isRC ? 0 : (parseFloat(document.getElementById('if-vat')?.value) || 0);
+    const vat     = Math.round(amount * rate) / 100;
+    const total   = amount + vat;
+    const fmt     = v => v.toLocaleString('sk-SK',{minimumFractionDigits:2}) + ' €';
     const va = document.getElementById('if-vat-amount');
     const to = document.getElementById('if-total');
     if (va) va.textContent = fmt(vat);
     if (to) to.textContent = fmt(total);
+    // Disable VAT select pri reverse charge
+    const vatSel = document.getElementById('if-vat');
+    if (vatSel) vatSel.disabled = isRC;
   },
 
   async _saveInvoice(id) {
     const isNew  = !id;
     const number = document.getElementById('if-number')?.value.trim();
     const amount = parseFloat(document.getElementById('if-amount')?.value) || 0;
-    if (!number || !amount) { alert('Zadaj číslo dokladu a sumu.'); return; }
+    if (!number || !amount) { toast.error('Zadaj číslo dokladu a sumu.'); return; }
 
     const btn = document.getElementById('if-btn');
     if (btn) { btn.disabled = true; btn.textContent = '⏳...'; }
 
-    const rate  = parseFloat(document.getElementById('if-vat')?.value) || 0;
+    const isRC  = document.getElementById('if-reverse-charge')?.checked || false;
+    const rate  = isRC ? 0 : (parseFloat(document.getElementById('if-vat')?.value) || 0);
     const vat   = Math.round(amount * rate) / 100;
     const total = amount + vat;
     const uid   = app._currentUserId();
@@ -316,6 +330,7 @@ const payoutsView = {
       vat_rate:        rate,
       vat_amount:      vat,
       amount_inc_vat:  total,
+      reverse_charge:  isRC,
       issue_date:      document.getElementById('if-issue')?.value    || new Date().toISOString().slice(0,10),
       due_date:        document.getElementById('if-due')?.value      || null,
       notes:           document.getElementById('if-notes')?.value    || null,

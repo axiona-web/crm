@@ -107,7 +107,17 @@ const membersView = {
 
       <div id="fields-pravnicka" style="display:${!isFyz?'':'none'};">
         <div class="form-row"><label class="form-label">Názov spoločnosti *</label><input id="cf-companyname" value="${esc(c.companyName||'')}" /></div>
-        <div class="form-row"><label class="form-label">IČO *</label><input id="cf-ico" value="${esc(c.ico||'')}" /></div>
+        <div class="form-grid-2">
+          <div class="form-row"><label class="form-label">IČO *</label><input id="cf-ico" value="${esc(c.ico||'')}" /></div>
+          <div class="form-row"><label class="form-label">IČ DPH</label><input id="cf-ic-dph" value="${esc(c.ic_dph||'')}" placeholder="SK2020..." /></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 0;margin-bottom:4px;">
+          <input type="checkbox" id="cf-vat-payer" ${c.is_vat_payer?'checked':''} />
+          <label for="cf-vat-payer" style="font-size:13px;cursor:pointer;">
+            Platca DPH
+            <span style="font-size:11px;color:var(--muted);margin-left:4px;">(faktúra bez DPH — reverse charge)</span>
+          </label>
+        </div>
       </div>
 
       <div class="form-row">
@@ -189,8 +199,13 @@ const membersView = {
     const btn = document.getElementById('cf-submit');
     if (btn) { btn.disabled = true; btn.textContent = 'Ukladám...'; }
 
-    const obj = { entityType, firstName, lastName, companyName, ico, phone, email,
-      type: this._val('cf-type') || 'Člen', notes: this._val('cf-notes') };
+    const obj = {
+      entityType, firstName, lastName, companyName, ico, phone, email,
+      type: this._val('cf-type') || 'Člen',
+      notes: this._val('cf-notes'),
+      ic_dph: this._val('cf-ic-dph') || null,
+      is_vat_payer: document.getElementById('cf-vat-payer')?.checked || false,
+    };
 
     try {
       if (isNew) {

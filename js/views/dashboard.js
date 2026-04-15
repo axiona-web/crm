@@ -157,11 +157,15 @@ const dashboardView = {
     if (!el) return;
 
     const today = new Date().toISOString().slice(0,10);
+    const daysDiff = (dateStr) => Math.floor((new Date() - new Date(dateStr)) / 86400000);
+
     const [invRes, dealRes, commRes, auditRes] = await Promise.all([
-      db.client.from('invoices').select('id,invoice_number,status,due_date,amount_inc_vat,deal_id').not('status','in','("cancelled","draft")'),
-      db.client.from('deals').select('id,title,status'),
-      db.client.from('commissions').select('id,amount,status,owner_id'),
-      db.client.from('audit_logs').select('action,created_at,entity_id').order('created_at',{ascending:false}).limit(10),
+      db.client.from('invoices').select('id,invoice_number,status,due_date,amount_inc_vat,deal_id,issue_date').not('status','in','("cancelled","draft")').order('due_date'),
+      db.client.from('deals').select('id,title,status,payment_pending_at,created_at').order('created_at'),
+      db.client.from('commissions').select('id,amount,status,created_at,notes').eq('status','pending').order('created_at'),
+      db.client.from('audit_logs').select('action,created_at,entity_id,old_value,new_value')
+        .in('action',['status_changed','price_changed_after_invoice','discount_applied'])
+        .order('created_at',{ascending:false}).limit(20),
     ]);
 
     const invoices = invRes.data || [];
@@ -169,49 +173,133 @@ const dashboardView = {
     const comms    = commRes.data || [];
     const audits   = auditRes.data || [];
 
-    // Nekonzistentné stavy
-    const overdueInvs    = invoices.filter(i => i.status === 'sent' && i.due_date < today);
-    const pendingInvs    = invoices.filter(i => i.status === 'sent');
-    const pendingComms   = comms.filter(c => c.status === 'pending');
-    const paidDeals      = deals.filter(d => d.status === 'payment_pending');
-    const priceChanges   = audits.filter(a => a.action === 'price_changed_after_invoice');
+    // Kategorizácia
+    const overdueInvs  = invoices.filter(i => i.status === 'sent' && i.due_date < today)
+      .sort((a,b) => new Date(a.due_date) - new Date(b.due_date));
+    const pendingInvs  = invoices.filter(i => i.status === 'sent' && i.due_date >= today)
+      .sort((a,b) => new Date(a.due_date) - new Date(b.due_date));
+    const longPending  = deals.filter(d => d.status === 'payment_pending' && d.payment_pending_at && daysDiff(d.payment_pending_at) > 7);
+    const allPending   = deals.filter(d => d.status === 'payment_pending');
+    const priceChanges = audits.filter(a => a.action === 'price_changed_after_invoice');
+    const relevantAudit = audits.filter(a => a.action === 'status_changed').slice(0,5);
 
-    const issues = [];
-    if (overdueInvs.length > 0)  issues.push({ icon:'🔴', label:`${overdueInvs.length} faktúr po splatnosti`, action: `app.setView('payouts')`, color:'var(--red)' });
-    if (pendingInvs.length > 0)  issues.push({ icon:'🟡', label:`${pendingInvs.length} faktúr čaká na úhradu`, action: `app.setView('payouts')`, color:'var(--acc)' });
-    if (pendingComms.length > 0) issues.push({ icon:'🟡', label:`${pendingComms.length} komisií čaká na schválenie`, action: `app.setView('commissions')`, color:'var(--acc)' });
-    if (paidDeals.length > 0)    issues.push({ icon:'🟡', label:`${paidDeals.length} dealov čaká na platbu`, action: `app.setView('pipeline')`, color:'#f59e0b' });
-    if (priceChanges.length > 0) issues.push({ icon:'⚠️', label:`${priceChanges.length} zmien ceny po faktúre`, action: `app.setView('pipeline')`, color:'var(--red)' });
+    // Sekcie
+    const critical = [];
+    const attention = [];
+    const info = [];
 
-    if (issues.length === 0) {
+    // KRITICKÉ
+    if (overdueInvs.length > 0) {
+      const oldest = daysDiff(overdueInvs[0].due_date);
+      critical.push({
+        icon: '🔴',
+        title: `${overdueInvs.length} faktúr po splatnosti`,
+        subtitle: `Najstaršia: ${oldest} dní | Celková suma: ${EUR(overdueInvs.reduce((a,i)=>a+i.amount_inc_vat,0))}`,
+        items: overdueInvs.slice(0,3).map(i => `${i.invoice_number} — ${daysDiff(i.due_date)} dní — ${EUR(i.amount_inc_vat)}`),
+        action: "app.setView('payouts')",
+        color: 'var(--red)',
+      });
+    }
+    if (priceChanges.length > 0) {
+      critical.push({
+        icon: '⚠️',
+        title: `${priceChanges.length} zmien ceny po faktúre`,
+        subtitle: 'Faktúra môže mať inú sumu ako deal',
+        items: priceChanges.slice(0,3).map(a => `Deal zmenený ${new Date(a.created_at).toLocaleDateString('sk-SK')}`),
+        action: "app.setView('pipeline')",
+        color: 'var(--red)',
+      });
+    }
+
+    // POZORNOSŤ
+    if (pendingInvs.length > 0) {
+      const nearest = Math.max(0, Math.ceil((new Date(pendingInvs[0].due_date) - new Date()) / 86400000));
+      attention.push({
+        icon: '🟡',
+        title: `${pendingInvs.length} faktúr čaká na úhradu`,
+        subtitle: `Najbližšia splatnosť: ${nearest} dní | Suma: ${EUR(pendingInvs.reduce((a,i)=>a+i.amount_inc_vat,0))}`,
+        items: pendingInvs.slice(0,3).map(i => `${i.invoice_number} — splatnosť ${i.due_date} — ${EUR(i.amount_inc_vat)}`),
+        action: "app.setView('payouts')",
+        color: '#f59e0b',
+      });
+    }
+    if (comms.length > 0) {
+      const oldest = daysDiff(comms[0].created_at);
+      attention.push({
+        icon: '🟡',
+        title: `${comms.length} komisií čaká na schválenie`,
+        subtitle: `Najstaršia: ${oldest} dní | Suma: ${EUR(comms.reduce((a,c)=>a+c.amount,0))}`,
+        items: comms.slice(0,3).map(c => `${EUR(c.amount)} — ${daysDiff(c.created_at)} dní`),
+        action: "app.setView('commissions')",
+        color: '#f59e0b',
+      });
+    }
+    if (longPending.length > 0) {
+      attention.push({
+        icon: '🟡',
+        title: `${longPending.length} dealov čaká na platbu viac ako 7 dní`,
+        subtitle: `Celkom v payment_pending: ${allPending.length}`,
+        items: longPending.slice(0,3).map(d => `${esc(d.title)} — ${daysDiff(d.payment_pending_at)} dní`),
+        action: "app.setView('pipeline')",
+        color: '#f59e0b',
+      });
+    } else if (allPending.length > 0) {
+      info.push({
+        icon: 'ℹ️',
+        title: `${allPending.length} dealov v stave Čaká platba`,
+        subtitle: 'Všetky v rámci bežnej lehoty',
+        action: "app.setView('pipeline')",
+        color: 'var(--muted)',
+      });
+    }
+
+    // INFORMATÍVNE — posledná aktivita
+    if (relevantAudit.length > 0) {
+      info.push({
+        icon: '📋',
+        title: 'Posledná aktivita',
+        subtitle: relevantAudit[0] ? `${relevantAudit[0].old_value} → ${relevantAudit[0].new_value} (${new Date(relevantAudit[0].created_at).toLocaleString('sk-SK')})` : '—',
+        action: null,
+        color: 'var(--muted)',
+      });
+    }
+
+    if (critical.length === 0 && attention.length === 0 && info.filter(i=>i.icon!=='ℹ️'&&i.icon!=='📋').length === 0) {
       el.innerHTML = `
         <div class="card" style="border-color:rgba(62,207,142,0.3);">
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-size:18px;">✅</span>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:22px;">✅</span>
             <div>
               <div style="font-size:13px;font-weight:700;color:var(--green);">Systém bez problémov</div>
-              <div style="font-size:11px;color:var(--muted);">Žiadne nekonzistentné stavy, faktúry, komisie</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px;">Žiadne kritické stavy — faktúry, komisie, nekonzistencie</div>
             </div>
           </div>
+          ${info.length > 0 ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--brd);">
+            ${info.map(i=>`<div style="font-size:12px;color:var(--muted);">${i.icon} ${i.title}${i.subtitle?' — '+i.subtitle:''}</div>`).join('')}
+          </div>` : ''}
         </div>`;
       return;
     }
 
-    el.innerHTML = `
-      <div class="card" style="border-color:rgba(212,148,58,0.3);">
-        <div style="font-size:12px;font-weight:700;color:var(--acc);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px;">⚠ Monitoring — vyžaduje pozornosť</div>
-        ${issues.map(i => `
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--brd);">
-            <div style="display:flex;align-items:center;gap:8px;font-size:13px;">
-              <span>${i.icon}</span>
-              <span style="color:${i.color};">${i.label}</span>
+    const renderSection = (items, sectionTitle, sectionColor) => items.length === 0 ? '' : `
+      <div style="font-size:10px;font-weight:700;color:${sectionColor};text-transform:uppercase;letter-spacing:0.08em;margin:12px 0 6px;">${sectionTitle}</div>
+      ${items.map(item => `
+        <div style="background:var(--inp);border:1px solid ${item.color}33;border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+            <div style="flex:1;">
+              <div style="font-size:13px;font-weight:700;color:${item.color};margin-bottom:2px;">${item.icon} ${item.title}</div>
+              <div style="font-size:11px;color:var(--muted);">${item.subtitle||''}</div>
+              ${(item.items||[]).length > 0 ? `<div style="margin-top:6px;">${item.items.map(i=>`<div style="font-size:11px;color:var(--txt);padding:1px 0;">• ${i}</div>`).join('')}</div>` : ''}
             </div>
-            <button class="btn-ghost" style="font-size:11px;" onclick="${i.action}">Zobraziť →</button>
-          </div>`).join('')}
-        <div style="font-size:11px;color:var(--muted);margin-top:8px;">
-          Posledná aktivita: ${audits[0] ? audits[0].action + ' (' + new Date(audits[0].created_at).toLocaleString('sk-SK') + ')' : 'žiadna'}
-        </div>
-      </div>`;
+            ${item.action ? `<button class="btn-ghost" style="font-size:11px;flex-shrink:0;" onclick="${item.action}">Zobraziť →</button>` : ''}
+          </div>
+        </div>`).join('')}`;
+
+    el.innerHTML = `
+      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">🔍 Monitoring</div>
+      ${renderSection(critical, '🔴 Kritické', 'var(--red)')}
+      ${renderSection(attention, '🟡 Vyžaduje pozornosť', '#f59e0b')}
+      ${renderSection(info, 'ℹ Informatívne', 'var(--muted)')}`;
   },
 
   _initFunnel() {
