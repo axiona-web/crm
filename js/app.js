@@ -43,18 +43,35 @@ const app = {
 
   async boot() {
     const role = previewRole.effective();
-    if (role === 'clen')           this.state.view = 'clen_dashboard';
-    else if (role === 'obchodnik') this.state.view = 'obchodnik_dashboard';
-    else if (role === 'partner')   this.state.view = 'partner_dashboard';
-    else                           this.state.view = 'dashboard';
+
+    // Hash routing — načítaj sekciu z URL pri boote/refreshi
+    const hashView = window.location.hash.replace('#', '').trim();
+    if (hashView && VIEWS[hashView]) {
+      this.state.view = hashView;
+    } else if (role === 'clen')      this.state.view = 'clen_dashboard';
+    else if (role === 'obchodnik')   this.state.view = 'obchodnik_dashboard';
+    else if (role === 'partner')     this.state.view = 'partner_dashboard';
+    else                             this.state.view = 'dashboard';
+
     document.getElementById('root').innerHTML = this._appShell();
     modal.init();
+
+    // Browser back/forward
+    window.addEventListener('popstate', (e) => {
+      const view = e.state?.view || window.location.hash.replace('#','');
+      if (view && VIEWS[view] && view !== this.state.view) {
+        this.state.view = view;
+        this.renderNav();
+        this._lastLoad = 0;
+        this._loadData().then(() => this.renderContent());
+      }
+    });
+
     if (role !== 'clen') await this._loadData();
     this.renderNav();
-    this.renderContent();
+    await this.renderContent();
     this.updateFooter();
     this._updatePreviewBanner();
-    // Spusti notifikácie
     if (typeof notifView !== 'undefined') notifView.init();
   },
 
@@ -92,20 +109,41 @@ const app = {
   },
 
   _rendering: false,
+  _renderSeq:  0,
+  _debug:      false,
+  _log(...args) { if (this._debug) console.log('[APP]', ...args); },
 
   setView(id) {
+    if (!VIEWS[id]) { console.warn('[APP] unknown view:', id); return; }
+    this._log('setView', id, '<- from', this.state.view);
     this.state.view = id;
+    // Hash routing — URL zmena okamžite
+    history.pushState({ view: id }, '', window.location.pathname + '#' + id);
+    // Nav highlight okamžite
     this.renderNav();
-    this._loadData().then(() => this.renderContent()).catch(e => {
-      console.error('setView error:', e);
-      this.renderContent(); // Pokús sa renderovať aj bez čerstvých dát
-    });
+    // Reset throttle pri manuálnej navigácii
+    this._lastLoad = 0;
+    this._loadData()
+      .then(() => this.renderContent())
+      .catch(e => { console.error('[APP] setView error:', e); this.renderContent(); });
+  },
+
+  _forceSetView(id) {
+    this._rendering = false;
+    this._renderSeq++;
+    this._lastLoad = 0;
+    this.state.view = id;
+    history.pushState({ view: id }, '', window.location.pathname + '#' + id);
+    this.renderNav();
+    this._loadData().then(() => this.renderContent());
   },
 
   renderNav() {
+    const el = document.getElementById('nav');
+    if (!el) return;
     const role  = previewRole.effective();
     const items = NAV_BY_ROLE[role] || NAV_BY_ROLE.clen;
-    document.getElementById('nav').innerHTML = items.map(n => `
+    el.innerHTML = items.map(n => `
       <button class="nav-btn${this.state.view === n.id ? ' active' : ''}"
         onclick="app.setView('${n.id}')">
         <span class="nav-icon">${n.icon}</span>
@@ -114,25 +152,32 @@ const app = {
   },
 
   async renderContent() {
-    // Zabráň paralelným renderom
-    if (this._rendering) return;
+    const seq = ++this._renderSeq;
+    // Ak stale render beží, force unlock po 50ms
+    if (this._rendering) {
+      await new Promise(r => setTimeout(r, 50));
+      if (this._rendering) this._rendering = false;
+    }
     this._rendering = true;
-
-    const view = VIEWS[this.state.view];
+    const viewId = this.state.view;
+    const view   = VIEWS[viewId];
     if (!view) { this._rendering = false; return; }
 
+    const content = document.getElementById('content');
+    if (content) content.innerHTML = `<div style="padding:24px;color:var(--muted);font-size:13px;"><span style="display:inline-block;width:12px;height:12px;border:2px solid var(--acc);border-top-color:transparent;border-radius:50%;animation:spin 0.7s linear infinite;margin-right:8px;vertical-align:middle;"></span>Načítavam...</div>`;
+
     try {
-      document.getElementById('content').innerHTML = view.render();
+      if (seq !== this._renderSeq) { this._rendering = false; return; }
+      const html = view.render();
+      if (seq !== this._renderSeq) { this._rendering = false; return; }
+      if (content) content.innerHTML = html;
       if (view.afterRender) await view.afterRender();
+      this._log('renderContent done seq='+seq, viewId);
     } catch(e) {
-      console.error('renderContent error:', e);
-      // Zobraz chybu v content area namiesto zamrznutia
-      const el = document.getElementById('content');
-      if (el) el.innerHTML += `
-        <div style="background:rgba(242,85,85,0.1);border:1px solid rgba(242,85,85,0.3);border-radius:8px;padding:12px;margin-top:12px;font-size:12px;color:var(--red);">
-          ⚠ Chyba pri načítaní sekcie: ${e.message}
-          <button class="btn-ghost" style="margin-left:12px;font-size:11px;" onclick="app.setView('${this.state.view}')">↻ Skúsiť znovu</button>
-        </div>`;
+      console.error('[APP] renderContent error:', e);
+      if (content && seq === this._renderSeq) {
+        content.innerHTML = `<div style="padding:20px;"><div style="background:rgba(242,85,85,0.1);border:1px solid rgba(242,85,85,0.3);border-radius:8px;padding:14px;font-size:13px;color:var(--red);"><div style="font-weight:700;margin-bottom:6px;">⚠ Chyba sekcie</div><div style="color:var(--muted);margin-bottom:10px;">${e.message}</div><button class="btn-ghost" style="font-size:12px;" onclick="app._forceSetView('${viewId}')">↻ Skúsiť znovu</button><button class="btn-ghost" style="font-size:12px;margin-left:8px;" onclick="app.setView('dashboard')">← Dashboard</button></div></div>`;
+      }
     } finally {
       this._rendering = false;
     }
