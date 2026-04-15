@@ -155,10 +155,9 @@ const payoutsView = {
                   <div style="text-align:right;flex-shrink:0;">
                     <div class="mono" style="font-size:16px;font-weight:700;color:var(--acc);">${this._fmt(i.amount_inc_vat)}</div>
                     ${i.reverse_charge
-                      ? `<div style="font-size:11px;color:var(--blue);font-weight:600;">Reverse charge</div>`
-                      : i.vat_rate > 0
-                        ? `<div style="font-size:11px;color:var(--muted);">bez DPH: ${this._fmt(i.amount_ex_vat)} + ${i.vat_rate}% DPH</div>`
-                        : `<div style="font-size:11px;color:var(--muted);">bez DPH: ${this._fmt(i.amount_ex_vat)}</div>`}
+                      ? `<div style="font-size:11px;color:var(--blue);font-weight:700;letter-spacing:0.03em;">↔ Reverse charge</div>
+                         <div style="font-size:11px;color:var(--muted);">základ: ${this._fmt(i.amount_ex_vat)} · DPH: 0,00 €</div>`
+                      : `<div style="font-size:11px;color:var(--muted);">základ: ${this._fmt(i.amount_ex_vat)} · DPH ${i.vat_rate||0}%: ${this._fmt(i.vat_amount||0)}</div>`}
                   </div>
                 </div>
               </div>`;
@@ -210,22 +209,34 @@ const payoutsView = {
       </div>
 
       <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 8px;">Finančné</div>
+      <!-- Daňový režim -->
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 8px;">DPH a daňový režim</div>
+      <div class="form-row"><label class="form-label">Daňový režim</label>
+        <select id="if-regime" onchange="payoutsView._onRegimeChange()">
+          <option value="domestic_standard">Bežná sadzba 23 % (SK štandard 2025)</option>
+          <option value="reduced_19">Znížená sadzba 19 %</option>
+          <option value="reduced_5">Znížená sadzba 5 %</option>
+          <option value="reverse_charge">Reverse charge (§ 69 ZDPH)</option>
+          <option value="vat_exempt">Oslobodené od DPH</option>
+        </select>
+      </div>
       <div class="form-grid-2">
         <div class="form-row"><label class="form-label">Suma bez DPH (€) *</label>
           <input id="if-amount" type="number" step="0.01" oninput="payoutsView._calcVat()" /></div>
         <div class="form-row"><label class="form-label">Sadzba DPH (%)</label>
           <select id="if-vat" onchange="payoutsView._calcVat()">
-            <option value="20">20%</option>
-            <option value="10">10%</option>
-            <option value="0">0% (bez DPH)</option>
-          </select></div>
+            <option value="23" selected>23 %</option>
+            <option value="19">19 %</option>
+            <option value="5">5 %</option>
+            <option value="0">0 % (bez DPH)</option>
+          </select>
+        </div>
       </div>
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:10px;">
-        <input type="checkbox" id="if-reverse-charge" onchange="payoutsView._calcVat()" />
-        Reverse charge (platca DPH — faktúra bez DPH)
-        <span style="font-size:11px;color:var(--muted);">(vat_rate = 0, poznámka na faktúre)</span>
-      </label>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;">
+        <div style="background:var(--inp);border:1px solid var(--brd);border-radius:8px;padding:8px;text-align:center;">
+          <div style="font-size:10px;color:var(--muted);">Základ DPH</div>
+          <div class="mono" id="if-net-display" style="font-weight:700;color:var(--txt);">0,00 €</div>
+        </div>
         <div style="background:var(--inp);border:1px solid var(--brd);border-radius:8px;padding:8px;text-align:center;">
           <div style="font-size:10px;color:var(--muted);">DPH</div>
           <div class="mono" id="if-vat-amount" style="font-weight:700;color:var(--blue);">0,00 €</div>
@@ -235,6 +246,8 @@ const payoutsView = {
           <div class="mono" id="if-total" style="font-weight:700;color:var(--green);">0,00 €</div>
         </div>
       </div>
+      <div id="if-regime-note" style="font-size:11px;color:var(--muted);margin-bottom:10px;display:none;"></div>
+      <input type="hidden" id="if-reverse-charge" value="false" />
 
       <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 8px;">Dátumy</div>
       <div class="form-grid-2">
@@ -286,20 +299,47 @@ const payoutsView = {
     }
   },
 
+  _onRegimeChange() {
+    const regime = document.getElementById('if-regime')?.value;
+    const vatSel = document.getElementById('if-vat');
+    const rcHidden = document.getElementById('if-reverse-charge');
+    const note   = document.getElementById('if-regime-note');
+
+    const regimeMap = {
+      domestic_standard: { rate: 23, rc: false, note: '' },
+      reduced_19:        { rate: 19, rc: false, note: 'Znížená sadzba 19 % (napr. ubytovanie, reštaurácie)' },
+      reduced_5:         { rate: 5,  rc: false, note: 'Znížená sadzba 5 % (napr. knihy, lieky)' },
+      reverse_charge:    { rate: 0,  rc: true,  note: '↔ Reverse charge § 69 ZDPH — DPH odvádza odberateľ. Faktúra bez DPH.' },
+      vat_exempt:        { rate: 0,  rc: false, note: 'Oslobodené od DPH § 28-42 ZDPH' },
+    };
+
+    const cfg = regimeMap[regime] || regimeMap.domestic_standard;
+    if (vatSel) {
+      vatSel.value    = cfg.rate;
+      vatSel.disabled = cfg.rc || regime === 'vat_exempt';
+    }
+    if (rcHidden) rcHidden.value = cfg.rc ? 'true' : 'false';
+    if (note) {
+      note.textContent  = cfg.note;
+      note.style.display = cfg.note ? 'block' : 'none';
+      note.style.color   = cfg.rc ? 'var(--blue)' : 'var(--muted)';
+    }
+    this._calcVat();
+  },
+
   _calcVat() {
     const amount  = parseFloat(document.getElementById('if-amount')?.value) || 0;
-    const isRC    = document.getElementById('if-reverse-charge')?.checked || false;
+    const isRC    = document.getElementById('if-reverse-charge')?.value === 'true';
     const rate    = isRC ? 0 : (parseFloat(document.getElementById('if-vat')?.value) || 0);
     const vat     = Math.round(amount * rate) / 100;
     const total   = amount + vat;
     const fmt     = v => v.toLocaleString('sk-SK',{minimumFractionDigits:2}) + ' €';
+    const nd = document.getElementById('if-net-display');
     const va = document.getElementById('if-vat-amount');
     const to = document.getElementById('if-total');
+    if (nd) nd.textContent = fmt(amount);
     if (va) va.textContent = fmt(vat);
     if (to) to.textContent = fmt(total);
-    // Disable VAT select pri reverse charge
-    const vatSel = document.getElementById('if-vat');
-    if (vatSel) vatSel.disabled = isRC;
   },
 
   async _saveInvoice(id) {
@@ -311,11 +351,19 @@ const payoutsView = {
     const btn = document.getElementById('if-btn');
     if (btn) { btn.disabled = true; btn.textContent = '⏳...'; }
 
-    const isRC  = document.getElementById('if-reverse-charge')?.checked || false;
-    const rate  = isRC ? 0 : (parseFloat(document.getElementById('if-vat')?.value) || 0);
-    const vat   = Math.round(amount * rate) / 100;
-    const total = amount + vat;
-    const uid   = app._currentUserId();
+    const isRC   = document.getElementById('if-reverse-charge')?.value === 'true';
+    const regime = document.getElementById('if-regime')?.value || 'domestic_standard';
+    const rate   = isRC ? 0 : (parseFloat(document.getElementById('if-vat')?.value) || 0);
+    const vat    = Math.round(amount * rate) / 100;
+    const total  = amount + vat;
+    const uid    = app._currentUserId();
+
+    // Guardrail: RC nemôže mať rate > 0
+    if (isRC && rate > 0) {
+      toast.error('Reverse charge faktúra nemôže mať DPH > 0.');
+      if (btn) { btn.disabled = false; btn.textContent = 'Uložiť'; }
+      return;
+    }
 
     const obj = {
       invoice_number:  number,
@@ -331,6 +379,7 @@ const payoutsView = {
       vat_amount:      vat,
       amount_inc_vat:  total,
       reverse_charge:  isRC,
+      tax_regime:      regime,
       issue_date:      document.getElementById('if-issue')?.value    || new Date().toISOString().slice(0,10),
       due_date:        document.getElementById('if-due')?.value      || null,
       notes:           document.getElementById('if-notes')?.value    || null,
@@ -350,7 +399,7 @@ const payoutsView = {
       modal.close();
       this._render();
     } catch(e) {
-      alert('Chyba: ' + e.message);
+      toast.error('Chyba: ' + e.message);
       if (btn) { btn.disabled = false; btn.textContent = isNew ? 'Vytvoriť' : 'Uložiť'; }
     }
   },

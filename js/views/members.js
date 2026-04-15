@@ -115,7 +115,7 @@ const membersView = {
           <input type="checkbox" id="cf-vat-payer" ${c.is_vat_payer?'checked':''} />
           <label for="cf-vat-payer" style="font-size:13px;cursor:pointer;">
             Platca DPH
-            <span style="font-size:11px;color:var(--muted);margin-left:4px;">(faktúra bez DPH — reverse charge)</span>
+            <span style="font-size:11px;color:var(--muted);margin-left:4px;">(informácia o subjekte — daňový režim faktúry sa nastavuje pri fakturácii)</span>
           </label>
         </div>
       </div>
