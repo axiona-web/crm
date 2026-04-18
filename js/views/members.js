@@ -221,7 +221,7 @@ const membersView = {
         const updated = await db.updateContact(id, { ...orig, ...obj });
         app.state.contacts = app.state.contacts.map(c => c.id === id ? updated : c);
       }
-      modal.close(); app.updateFooter(); app.renderContent();
+      modal.close(); app.updateFooter(); setTimeout(() => app.renderContent(), 50);
     } catch(e) {
       console.error(e);
       this._showError('Chyba: ' + (e.message || 'skús znova'));
@@ -234,7 +234,7 @@ const membersView = {
     try {
       await db.deleteContact(id);
       app.state.contacts = app.state.contacts.filter(c => c.id !== id);
-      modal.close(); app.updateFooter(); app.renderContent();
+      modal.close(); app.updateFooter(); setTimeout(() => app.renderContent(), 50);
     } catch(e) { alert('Chyba: ' + e.message); }
   },
 };

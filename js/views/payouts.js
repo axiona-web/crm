@@ -534,17 +534,39 @@ const payoutsView = {
         <div class="form-row"><label class="form-label">IČO</label><input id="if-ico" value="${esc(i.client_ico||'')}" /></div>
         <div class="form-row"><label class="form-label">DIČ</label><input id="if-dic" value="${esc(i.client_dic||'')}" /></div>
       </div>
+
+      <!-- Daňový režim -->
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 8px;">DPH a daňový režim</div>
+      <div class="form-row"><label class="form-label">Daňový režim</label>
+        <select id="if-regime" onchange="payoutsView._onRegimeChange()">
+          <option value="domestic_standard"${(i.tax_regime||'domestic_standard')==='domestic_standard'?' selected':''}>Bežná sadzba 23 % (SK štandard 2025)</option>
+          <option value="reduced_19"${i.tax_regime==='reduced_19'?' selected':''}>Znížená sadzba 19 %</option>
+          <option value="reduced_5"${i.tax_regime==='reduced_5'?' selected':''}>Znížená sadzba 5 %</option>
+          <option value="reverse_charge"${i.tax_regime==='reverse_charge'?' selected':''}>Reverse charge (§ 69 ZDPH)</option>
+          <option value="vat_exempt"${i.tax_regime==='vat_exempt'?' selected':''}>Oslobodené od DPH</option>
+        </select>
+      </div>
       <div class="form-grid-2">
         <div class="form-row"><label class="form-label">Suma bez DPH (€)</label>
           <input id="if-amount" type="number" step="0.01" value="${i.amount_ex_vat||''}" oninput="payoutsView._calcVat()" /></div>
-        <div class="form-row"><label class="form-label">DPH (%)</label>
-          <select id="if-vat" onchange="payoutsView._calcVat()">
-            <option value="20"${i.vat_rate==20?' selected':''}>20%</option>
-            <option value="10"${i.vat_rate==10?' selected':''}>10%</option>
-            <option value="0"${i.vat_rate==0?' selected':''}>0%</option>
-          </select></div>
+        <div class="form-row"><label class="form-label">Sadzba DPH (%)</label>
+          <select id="if-vat" onchange="payoutsView._calcVat()" ${i.reverse_charge?'disabled':''}>
+            <option value="23"${i.vat_rate==23?' selected':''}>23 %</option>
+            <option value="19"${i.vat_rate==19?' selected':''}>19 %</option>
+            <option value="5"${i.vat_rate==5?' selected':''}>5 %</option>
+            <option value="0"${i.vat_rate==0?' selected':''}>0 %</option>
+          </select>
+        </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+      <input type="hidden" id="if-reverse-charge" value="${i.reverse_charge?'true':'false'}" />
+      <div id="if-regime-note" style="font-size:11px;color:${i.reverse_charge?'var(--blue)':'var(--muted)'};margin-bottom:10px;${i.reverse_charge?'':'display:none;'}">
+        ${i.reverse_charge ? '↔ Reverse charge § 69 ZDPH — DPH odvádza odberateľ.' : ''}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;">
+        <div style="background:var(--inp);border:1px solid var(--brd);border-radius:8px;padding:8px;text-align:center;">
+          <div style="font-size:10px;color:var(--muted);">Základ DPH</div>
+          <div class="mono" id="if-net-display" style="font-weight:700;color:var(--txt);">${this._fmt(i.amount_ex_vat)}</div>
+        </div>
         <div style="background:var(--inp);border:1px solid var(--brd);border-radius:8px;padding:8px;text-align:center;">
           <div style="font-size:10px;color:var(--muted);">DPH</div>
           <div class="mono" id="if-vat-amount" style="font-weight:700;color:var(--blue);">${this._fmt(i.vat_amount)}</div>
