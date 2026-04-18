@@ -22,6 +22,8 @@ function contactFromRow(r) {
     phone: r.phone || '', email: r.email || '',
     type: r.type || 'Člen', notes: r.notes || '',
     ownerId: r.owner_id, memberId: r.member_id, createdAt: r.created_at,
+    ic_dph: r.ic_dph || null,
+    is_vat_payer: r.is_vat_payer || false,
   };
 }
 
@@ -35,6 +37,8 @@ function contactToRow(c, ownerId) {
     company_name: c.companyName || null, ico: c.ico || null,
     phone: c.phone || null, email: c.email || null,
     type: c.type || 'Člen', notes: c.notes || null, owner_id: ownerId,
+    ic_dph: c.ic_dph || null,
+    is_vat_payer: c.is_vat_payer || false,
   };
 }
 
