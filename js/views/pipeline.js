@@ -997,7 +997,7 @@ const pipelineView = {
             base_price:       price,
             final_price:      effectivePrice,
           }),
-        }).catch(() => {});
+        }).then(() => {}).catch(() => {});
       }
 
       this._deals.unshift(data);
