@@ -391,6 +391,7 @@ const pipelineView = {
 
     // Checklist — čo chýba pre ďalší krok
     const checks = [
+      { ok: !!d.assigned_to,          label: 'Exekútor (kto rieši deal)', needed: ['assigned'] },
       { ok: !!d.contact_id,           label: 'Kontakt', needed: ['contacted','offer_sent','won','payment_pending','paid'] },
       { ok: !!d.product_id,           label: 'Produkt', needed: ['offer_sent','won','payment_pending','paid'] },
       { ok: price > 0,                label: 'Cena',    needed: ['offer_sent','won','payment_pending','paid'] },
